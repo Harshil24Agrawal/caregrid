@@ -1,14 +1,18 @@
 """Store interface and SQLite implementation (JSON blobs per table)."""
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
+import uuid
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
 from caregrid import config
+from caregrid.ingest.anonymize import anonymize
+from caregrid.ingest.leakscan import detect_pii
 from caregrid.models import AuditEvent, Case, Communication, KnowledgePR, TrustRecord
 
 
@@ -38,6 +42,23 @@ CREATE INDEX IF NOT EXISTS comms_case ON comms(case_id);
 """
 
 _REQ_ID = re.compile(r"^REQ-(\d+)$")
+# Case fields holding internal record references (member/invoice ids) that are resolved under RBAC, not free text.
+_SAFETY_NET_SKIP = {"related"}
+
+
+def _remask(obj, types: set[str], skip: frozenset[str] | set[str] = frozenset()):
+    """Safety net: walk a dumped model, re-mask any string in which PII is still detected. Collects types only."""
+    if isinstance(obj, str):
+        found = detect_pii(obj)
+        if not found:
+            return obj
+        types.update(found)
+        return anonymize(obj, cueless=False)[0]
+    if isinstance(obj, dict):
+        return {k: (v if k in skip else _remask(v, types)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_remask(v, types) for v in obj]
+    return obj
 
 
 class SQLiteStore:
@@ -67,10 +88,18 @@ class SQLiteStore:
 
     # -- cases
     def save_case(self, case: Case) -> None:
+        types: set[str] = set()
+        dumped = _remask(json.loads(case.model_dump_json()), types, _SAFETY_NET_SKIP)
+        if types:
+            case = Case.model_validate(dumped)
         self._exec(
             "INSERT OR REPLACE INTO cases (id, created_at, state, data) VALUES (?,?,?,?)",
             (case.id, case.created_at.isoformat(), case.state.value, case.model_dump_json()),
         )
+        if types:
+            self.append_audit(AuditEvent(
+                id=uuid.uuid4().hex[:12], ts=datetime.now(), case_id=case.id, actor_id="system", actor_role="system",
+                event="pii_remasked", details={"pii_remasked": sorted(types), "source": "save_case"}))
 
     def get_case(self, case_id: str) -> Case | None:
         rows = self._all("SELECT data FROM cases WHERE id=?", (case_id,))
@@ -90,6 +119,10 @@ class SQLiteStore:
 
     # -- audit (append-only)
     def append_audit(self, ev: AuditEvent) -> None:
+        types: set[str] = set()
+        details = _remask(dict(ev.details), types)
+        if types:
+            ev = ev.model_copy(update={"details": {**details, "pii_remasked": sorted(types)}})
         self._exec(
             "INSERT INTO audit (id, ts, case_id, data) VALUES (?,?,?,?)",
             (ev.id, ev.ts.isoformat(), ev.case_id, ev.model_dump_json()),

@@ -1,17 +1,31 @@
-"""Scan every file in second_brain/ for PII. Findings use LintFinding(code="PII_LEAK"); values are never echoed."""
+"""PII leak detection: one detector (`detect_pii`) used by the brain scan, the store safety net and the CLI.
+
+`detect_pii` runs the anonymizer's own detectors (so masking and detection can never drift apart) with the cue-less
+name pass off, and ignores the exact team mailboxes from teams.csv. Findings use LintFinding(code="PII_LEAK");
+values are never echoed.
+"""
 from __future__ import annotations
 
 import csv
+import json
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from caregrid import config
-from caregrid.ingest.anonymize import DOB, EMAIL, MEMBER_ID, PHONE_IN, PHONE_US, build_gazetteer
+from caregrid.ingest.anonymize import EMAIL, Gazetteer, anonymize, build_gazetteer
+from caregrid.ingest.normalize import normalize_text
 from caregrid.models import LintFinding
 
 # versioned page filenames such as KA-12@v3.md look like emails; they are not
 VERSIONED_FILE = re.compile(r"@v\d+\.md")
-DIGITS_9_10 = re.compile(r"(?<![\w.-])\d{9,10}(?![\w])")
+_ORG_MAILBOX = "ORGMAILBOX"
+
+MESSAGES = {
+    "EMAIL": "email address", "MEMBER_ID": "member ID", "NPI": "NPI number", "PHONE": "phone number",
+    "ID": "long ID number", "CARD": "card number", "DATE_OF_BIRTH": "date of birth", "ADDRESS": "address",
+    "PERSON": "person name",
+}
 
 
 def team_mailboxes(data_dir: Path) -> set[str]:
@@ -23,36 +37,52 @@ def team_mailboxes(data_dir: Path) -> set[str]:
         return {r["contact_email"].lower() for r in csv.DictReader(f) if r.get("contact_email")}
 
 
+@lru_cache(maxsize=8)
+def _cached_mailboxes(data_dir: str) -> frozenset[str]:
+    return frozenset(team_mailboxes(Path(data_dir)))
+
+
+def detect_pii(text: str, gazetteer: Gazetteer | None = None, allowed_emails: set[str] | frozenset[str] | None = None) -> list[str]:
+    """PII types present in `text` (types only, sorted). Team mailboxes are not PII."""
+    allowed = _cached_mailboxes(str(config.DATA_DIR)) if allowed_emails is None else allowed_emails
+    s = normalize_text(text)
+    if allowed:
+        s = EMAIL.sub(lambda m: _ORG_MAILBOX if m.group(0).lower() in allowed else m.group(0), s)
+    return anonymize(s, gazetteer, cueless=False)[1]
+
+
+def _findings(label: str, types: list[str]) -> list[LintFinding]:
+    return [LintFinding(severity="error", code="PII_LEAK", page_ids=[label], message=f"{label}: {MESSAGES.get(t, t)}") for t in types]
+
+
 def leak_scan(brain_dir: Path, data_dir: Path | None = None) -> list[LintFinding]:
     brain_dir = Path(brain_dir)
     data_dir = Path(data_dir) if data_dir is not None else config.DATA_DIR
     gaz = build_gazetteer(data_dir)
-    allowed_emails = team_mailboxes(data_dir)
-    literals = {"name": list(gaz.names), "address": gaz.addresses, "phone": gaz.phones, "email": gaz.emails}
+    allowed = team_mailboxes(data_dir)
     findings: list[LintFinding] = []
-
     for path in sorted(p for p in brain_dir.rglob("*") if p.is_file()):
         text = VERSIONED_FILE.sub("", path.read_text(encoding="utf-8"))
-        rel = path.relative_to(brain_dir).as_posix()
-        hits: set[str] = set()
+        findings += _findings(path.relative_to(brain_dir).as_posix(), detect_pii(text, gaz, allowed))
+    return findings
 
-        for m in EMAIL.finditer(text):
-            if m.group(0).lower() not in allowed_emails:
-                hits.add("email address")
-        if MEMBER_ID.search(text):
-            hits.add("member ID")
-        if DIGITS_9_10.search(text):
-            hits.add("9-10 digit number (NPI?)")
-        if PHONE_IN.search(text) or PHONE_US.search(text):
-            hits.add("phone number")
-        if DOB.search(text):
-            hits.add("labelled date of birth")
-        low = text.lower()
-        for kind, values in literals.items():
-            for v in values:
-                if v and v.lower() in low:
-                    hits.add(f"known {kind} from source data")
-                    break
-        for h in sorted(hits):
-            findings.append(LintFinding(severity="error", code="PII_LEAK", page_ids=[rel], message=f"{rel}: {h}"))
+
+def leak_scan_store(store, data_dir: Path | None = None) -> list[LintFinding]:
+    """Scan persisted cases, audit rows and communications. `related` (internal record references that are resolved
+    under RBAC) is excluded, exactly as in the store's own safety net."""
+    data_dir = Path(data_dir) if data_dir is not None else config.DATA_DIR
+    gaz = build_gazetteer(data_dir)
+    allowed = team_mailboxes(data_dir)
+    findings: list[LintFinding] = []
+
+    def scan(label: str, obj: dict) -> None:
+        obj = {k: v for k, v in obj.items() if k != "related"}
+        findings.extend(_findings(label, detect_pii(json.dumps(obj, ensure_ascii=False, default=str), gaz, allowed)))
+
+    for c in store.list_cases():
+        scan(f"case:{c.id}", json.loads(c.model_dump_json()))
+    for e in store.list_audit():
+        scan(f"audit:{e.id}", json.loads(e.model_dump_json()))
+    for m in store.list_comms():
+        scan(f"comm:{m.id}", json.loads(m.model_dump_json()))
     return findings

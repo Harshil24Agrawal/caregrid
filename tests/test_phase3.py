@@ -117,7 +117,8 @@ def test_anonymizer_masks_free_text_names_and_malformed_ids():
     g = check_input("Provider NPI 1098765436 changed name to Sara Khan. Member M1234567 and NPI 10987654.", ASHA)
     for leaked in ("Sara", "Khan", "1098765436", "M1234567", "10987654"):
         assert leaked not in g.masked_text
-    assert g.validated_fields["npi"] == "invalid: 8 digits" or g.validated_fields["npi"] == "valid"
+    assert g.validated_fields["npi"] == "invalid: 8 digits"          # every NPI is checked, the first invalid one is reported
+    assert g.validated_fields["member_id"] == "invalid: 7 digits after M (expected 8)"
 
 
 # ================================================================== guards
@@ -528,6 +529,17 @@ def test_s6_compounding_60_then_75(brain, paths, tmp_path):
 
 
 # ================================================================== eval sweep (guard + extract + rules + decide_code)
+# eval rows whose expected_reasons list only the primary reason, while the rules correctly add more. Equality is strict
+# for every other row; these extras are spelled out here until the eval file itself is updated (needs approval).
+_CRIT = {"HIGH_RISK"}
+EVAL_REASONS_PENDING_APPROVAL = {
+    "EV-28": {"MISSING_DATA"},                                   # no member id in the text (approved row: expected_missing)
+    "EV-38": _CRIT, "EV-39": _CRIT,                              # legal wording -> CRITICAL -> HIGH_RISK
+    "EV-40": _CRIT, "EV-41": _CRIT, "EV-42": _CRIT, "EV-43": _CRIT, "EV-44": _CRIT,   # clinical -> CRITICAL -> HIGH_RISK
+    "EV-50": {"ACCOUNT_SPECIFIC"}, "EV-53": {"ACCOUNT_SPECIFIC"},                    # "show me member's phone / DOB"
+}
+
+
 def test_eval_rows_through_deterministic_chain(brain, paths):
     people = {"U1": ASHA, "U2": VIKRAM, "U4": RAHUL, "U7": VIKRAM}
     routing_only = {"POLICY_GAP", "LOW_CONFIDENCE"}       # added later by workflow routing, not by rules
@@ -538,12 +550,12 @@ def test_eval_rows_through_deterministic_chain(brain, paths):
         c = run_chain(r["text"], people[r["requester_id"]], brain, LLM)
         got_missing = set(c.rules.missing_fields) | set(c.rules.invalid_fields)
         want_missing = set(filter(None, r["expected_missing"].split(";")))
-        want_reasons = set(filter(None, r["expected_reasons"].split(";"))) - routing_only
+        want_reasons = (set(filter(None, r["expected_reasons"].split(";"))) - routing_only) | EVAL_REASONS_PENDING_APPROVAL.get(r["id"], set())
         got_reasons = {x.value for x in c.rules.reason_codes}
         checks = [
             (c.cls.request_type == r["expected_type"], f"type {c.cls.request_type}"),
             (got_missing == want_missing, f"missing {sorted(got_missing)}"),
-            (want_reasons <= got_reasons, f"reasons {sorted(got_reasons)}"),
+            (want_reasons == got_reasons, f"reasons {sorted(got_reasons)} != {sorted(want_reasons)}"),
             (c.rules.route_team == r["expected_team"], f"team {c.rules.route_team}"),
             (r["must_refuse"] != "true" or c.proposal.decision_code == DecisionCode.REFUSE_AND_ROUTE, "not refused"),
             (r["must_refuse"] == "true" or c.proposal.decision_code != DecisionCode.REFUSE_AND_ROUTE, "refused but should not be"),

@@ -119,6 +119,7 @@ ROUTING_RULES = [
     ("RR-08", "request_type=general_policy_question", "TEAM-OPS-TRIAGE", "low", "team_specialist"),
     ("RR-09", "clinical=true", "TEAM-CLINICAL", "critical", "senior_reviewer"),
     ("RR-10", "request_type=unknown", "TEAM-OPS-TRIAGE", "low", "team_specialist"),
+    ("RR-11", "blocked=true", "TEAM-COMPLIANCE", "low", "team_specialist"),
 ]
 
 ARTICLE_COLS = ["id", "version", "title", "body", "status", "effective_from", "owner", "request_types", "rule_key", "rule_value"]

@@ -107,9 +107,16 @@ class Brain:
         self.append_log("system", "write_precedent", p.id, f"{p.decision_code.value} for {p.request_type}")
         self.rebuild_index()
 
-    def write_page(self, page: Page) -> None:
+    def write_page(self, page: Page, publish: bool = False) -> None:
         """Publish `page` as the next version of page.id: the previous current version becomes EXPIRED, precedents
-        that cite an older policy version become STALE, the change is logged and the index rebuilt."""
+        that cite an older policy version become STALE, the change is logged and the index rebuilt.
+
+        A DRAFT page is refused (ValueError) unless `publish=True`, which only the Knowledge-PR approval path passes."""
+        if page.status == PageStatus.DRAFT:
+            if not publish:
+                self.append_log("system", "write_page_refused", page.id, "draft pages cannot be written without PR approval")
+                raise ValueError(f"refusing to write DRAFT page {page.id}: it must go through Knowledge-PR approval (publish=True)")
+            self.append_log("system", "publish_draft", page.id, "draft published through PR approval")
         versions = self._pages.get(page.id, {})
         new_version = max(versions, default=0) + 1
         previous = self._current(page.id)

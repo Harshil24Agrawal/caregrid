@@ -89,7 +89,7 @@ def mask_cueless_names(s: str, stop: set[str] | frozenset[str], token: Callable[
                     edits.append((m.start(), nxt.end(), token(f"{word} {nxt.group(0)}")))
                     i += 2
                     continue
-            if lw not in AMBIGUOUS and (FOLLOWS.match(s, m.end()) or PRECEDED.search(s[: m.start()])):
+            if lw not in AMBIGUOUS and (FOLLOWS.match(s, m.end()) or PRECEDED.search(s[max(0, m.start() - 30): m.start()])):
                 edits.append((m.start(), m.end(), first_token(lw) or token(word)))
         i += 1
     for start, end, repl in sorted(edits, reverse=True):

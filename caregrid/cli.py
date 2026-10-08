@@ -8,7 +8,7 @@ from caregrid import config
 
 # command -> phase that implements it (stubs until then)
 _STUBS = {"demo": 4, "eval": 7}
-_COMMANDS = ["data", "brain", "lint", "reset", *_STUBS]
+_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", *_STUBS]
 
 
 def _short_err(e: Exception) -> str:
@@ -68,6 +68,24 @@ def cmd_brain() -> int:
     return 1 if findings else 0
 
 
+def cmd_leakscan() -> int:
+    """Scan the Second Brain files AND the SQLite cases/audit/comms rows for PII."""
+    from caregrid.ingest.leakscan import leak_scan, leak_scan_store
+    from caregrid.store import SQLiteStore
+
+    findings = leak_scan(config.BRAIN_DIR, config.DATA_DIR)
+    print(f"second_brain: {len(findings)} finding(s)")
+    store_findings = []
+    if config.DB_PATH.exists():
+        store_findings = leak_scan_store(SQLiteStore(), config.DATA_DIR)
+        print(f"sqlite (cases, audit, comms): {len(store_findings)} finding(s)")
+    else:
+        print("sqlite: no database yet, skipped")
+    for f in [*findings, *store_findings]:
+        print(f"  PII_LEAK {f.message}")
+    return 1 if findings or store_findings else 0
+
+
 def cmd_lint() -> int:
     from caregrid.knowledge.brain import Brain
     from caregrid.knowledge.lint import lint
@@ -107,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_data()
     if args.command == "brain":
         return cmd_brain()
+    if args.command == "leakscan":
+        return cmd_leakscan()
     if args.command == "lint":
         return cmd_lint()
     if args.command == "reset":

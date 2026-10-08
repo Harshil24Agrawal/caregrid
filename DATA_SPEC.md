@@ -55,7 +55,7 @@ List of `{id, title, request_type, steps[], required_fields[], team, risk, actio
 - WF-09 thresholds `{"estimated_cost_inr": 50000}`, required `["member_id","equipment_code","estimated_cost_inr","prescription_on_file"]`.
 
 ### `routing_rules.csv`
-`id, condition, team, risk, approver_role` — e.g. `RR-01, request_type=provider_address_change, TEAM-ENROLL, low, team_specialist`; `RR-09, clinical=true, TEAM-CLINICAL, critical, senior_reviewer`; `RR-10, request_type=unknown, TEAM-OPS-TRIAGE, low, team_specialist`.
+`id, condition, team, risk, approver_role` — e.g. `RR-01, request_type=provider_address_change, TEAM-ENROLL, low, team_specialist`; `RR-09, clinical=true, TEAM-CLINICAL, critical, senior_reviewer`; `RR-10, request_type=unknown, TEAM-OPS-TRIAGE, low, team_specialist`; `RR-11, blocked=true, TEAM-COMPLIANCE, low, team_specialist` (any request refused by the input guard: injection, ACCESS_DENIED, input too long; such requests are never classified).
 
 ### `field_definitions.csv`
 `field, meaning, regex, example, pii(true|false)`

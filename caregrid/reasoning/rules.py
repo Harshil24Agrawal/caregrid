@@ -141,7 +141,10 @@ def apply_rules(cls: Classification, ret: RetrievalResult, brain: Brain, guard: 
 
     # ---- team ------------------------------------------------------------------------
     team = meta.get("team")
-    if clinical:
+    if not guard.allowed:                    # refused by the input guard (injection, ACCESS_DENIED, too long): RR-11
+        rule = _routing_rule(brain, "blocked=true")
+        team = rule["team"] if rule else "TEAM-COMPLIANCE"
+    elif clinical:
         rule = _routing_rule(brain, "clinical=true")
         team = rule["team"] if rule else "TEAM-CLINICAL"
     elif cls.request_type == "unknown" or wf is None:
@@ -149,13 +152,14 @@ def apply_rules(cls: Classification, ret: RetrievalResult, brain: Brain, guard: 
         team = rule["team"] if rule else "TEAM-OPS-TRIAGE"
         if not any(c in HARD_OVERRIDES for c in reasons):
             _add(reasons, ReasonCode.UNCLEAR_INTENT)
-        elif ReasonCode.SENSITIVE in reasons or ReasonCode.ACCESS_DENIED in reasons:
+        elif ReasonCode.SENSITIVE in reasons:
             team = "TEAM-COMPLIANCE"
     res.route_team = team
 
     # ---- conflicts & notes ----------------------------------------------------------------
-    pols = [s.page for s in ret.policies if s.page.type == PageType.POLICY and cls.request_type in s.page.request_types
-            and s.page.meta.get("rule_key")]
+    # from ALL approved current policies for this request type, not just the retrieved top-k: a contradicting
+    # policy must be caught even when search ranks it below the cut-off
+    pols = [p for p in brain.current_policies() if cls.request_type in p.request_types and p.meta.get("rule_key")]
     for a, b in combinations(sorted(pols, key=lambda p: p.id), 2):
         if a.meta["rule_key"] == b.meta["rule_key"] and a.meta.get("rule_value") != b.meta.get("rule_value"):
             res.conflicts.append(f"{a.id} ({a.meta.get('rule_value')}) contradicts {b.id} ({b.meta.get('rule_value')}) "

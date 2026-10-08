@@ -98,7 +98,7 @@ def test_leak_scan_detects_planted_leaks(built, tmp_path):
     (tmp_path / "x.md").write_text(
         f"mail jane@clinic.example call +91 98765 43210 member M12345678 npi 1098765432 dob: 1980-01-02 {name}", encoding="utf-8")
     msgs = " | ".join(f.message for f in leak_scan(tmp_path, built["data"]))
-    for needle in ("email", "phone", "member ID", "9-10 digit", "date of birth", "known name"):
+    for needle in ("email", "phone", "member ID", "NPI number", "date of birth", "person name"):
         assert needle in msgs, needle
     assert "jane@clinic.example" not in msgs and name not in msgs  # values never echoed
 
