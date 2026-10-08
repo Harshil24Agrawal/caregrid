@@ -171,8 +171,10 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
          sorted(m.channel.value for m in comms) == ["email", "whatsapp"] and all(m.status == "simulated" for m in comms)),
         ("billing details come from billing.csv (INV-1024, \u20b962,500, pending_approval, due 2026-10-20)",
          all(x in m.message for m in comms for x in ("INV-1024", "62,500", "pending_approval", "2026-10-20"))),
-        ("official contacts appear only in the allowlisted records (leak scan clean)",
-         leak_scan_store(store, data_dir) == [] and all("dme.desk@clinic-supplies.example" in m.message for m in comms)),
+        ("no raw contact stored: recipients are masked, messages say 'For queries: [EMAIL] \u00b7 [PHONE]' (leak scan clean)",
+         leak_scan_store(store, data_dir) == [] and all("dme.desk" not in m.message + m.recipient and "98100" not in m.message + m.recipient
+                                                          and m.recipient_hash for m in comms)
+         and all("For queries: [EMAIL] \u00b7 [PHONE]" in m.message for m in comms)),
         ("precedent saved and ACTIVE", len(new_prec) == 1 and new_prec[0].status == PageStatus.ACTIVE and len(brain.precedents()) == n_before + 1),
         ("Asha cannot view billing", not can_view(asha, done, "billing")),
         ("Asha's view hides \u20b962,500", "62,500" not in seen_by_asha and "[amount hidden]" in seen_by_asha),

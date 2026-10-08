@@ -82,10 +82,5 @@ def leak_scan_store(store, data_dir: Path | None = None) -> list[LintFinding]:
     for e in store.list_audit():
         scan(f"audit:{e.id}", json.loads(e.model_dump_json()))
     for m in store.list_comms():
-        obj = json.loads(m.model_dump_json())
-        allowed = sorted(set(obj.pop("official_contacts", [])), key=len, reverse=True)      # the per-record allowlist
-        for key in ("message", "recipient"):
-            for i, a in enumerate(a for a in allowed if a):
-                obj[key] = obj[key].replace(a, f"ALLOWED{i}X")
-        scan(f"comm:{m.id}", obj)
+        scan(f"comm:{m.id}", json.loads(m.model_dump_json()))        # no allowlist: communications hold no raw contacts
     return findings

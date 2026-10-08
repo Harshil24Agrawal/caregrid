@@ -31,6 +31,7 @@ def server(tmp_path_factory):
     for name, val in (("DATA_DIR", root / "data"), ("BRAIN_DIR", root / "brain"), ("EVAL_DIR", root / "eval"), ("DB_PATH", root / "db.sqlite"),
                       ("LLM_PROVIDER", "mock")):
         mp.setattr(config, name, val)
+    mp.setenv("DEMO_MODE", "1")
     api.reset_process_state()
     reset_demo()
     with socket.socket() as s:
@@ -120,7 +121,8 @@ def test_every_page_loads_for_every_role_without_errors(web):
             p = web.go(path, sel)
             assert "Traceback" not in text(p), (uid, path)
         header = text(web.page, "header.topbar")
-        assert "LLM: mock" in header and "Reset demo" in header and "Demo login" in header and "Healthcare Operations Second Brain" in header
+        assert "LLM: mock" in header and "Demo login" in header and "Healthcare Operations Second Brain" in header
+        assert ("Reset demo" in header) == (uid in ("U3", "U4"))             # only ops managers and senior reviewers (DEMO_MODE=1)
         assert [a.inner_text() for a in web.page.query_selector_all("nav.navstrip a")] == ["Dashboard", "New request", "Cases", "Knowledge", "Audit"]
 
 
@@ -180,7 +182,8 @@ def test_s5_decide_assistant_rbac_messages_and_amount(web):
     p.press("#ask-input", "Enter")
     p.wait_for_function("document.querySelectorAll('#chat .msg.bot').length >= 1 && !document.querySelector('#chat .spinner')", timeout=T)
     assert "ACCESS RESTRICTED" in text(p, "#chat") and "62,500" not in text(p)
-    assert p.query_selector("#go") is None and "decide this case" in text(p, "#decide")
+    assert p.query_selector("#go") is None and "cannot approve your own request" in text(p, "#decide")
+    assert "decides" in text(p, ".row:has-text('Why a human')") and text(p, ".row:has-text('Why a human')").count(".") == 1
     # Rahul decides with e-mail + WhatsApp
     web.as_user("U4")
     p = web.go("/case.html?case=CASE-1024&decide=1", "#go")
@@ -226,8 +229,8 @@ def test_s7_pr_loop_in_the_browser(web):
     p.click("#go")
     p.wait_for_selector("#decision-result", timeout=T)
     assert "change request opened" in text(p, "#decision-result").lower()
-    p = web.go("/knowledge.html?tab=prs", "text=Open change requests")
-    assert p.is_disabled("button[data-act=approve]")
+    p = web.go("/knowledge.html?tab=prs", "#role-note")                    # Kiran (team specialist): the tab is not available for his role
+    assert "not available for your role" in text(p) and p.query_selector("button[data-act=approve]") is None
     web.as_user("U5")
     p = web.go("/knowledge.html?tab=prs", "button[data-act=approve]")
     assert "Retire" in text(p) and "KA-32" in text(p) and not p.is_disabled("button[data-act=approve]")
@@ -253,3 +256,37 @@ def test_reset_demo_button_asks_for_confirmation(web):
     p.wait_for_url("**/index.html", timeout=T)
     p.wait_for_selector(".kpi", timeout=T)
     assert "CASE-1024" in text(web.go("/case.html?case=CASE-1024", "#decide"))
+
+
+def test_knowledge_page_hides_admin_tabs_for_restricted_roles(web):
+    for uid, admin in (("U1", False), ("U2", False), ("U7", False), ("U3", True), ("U4", True), ("U5", True), ("U6", True)):
+        web.as_user(uid)
+        p = web.go("/knowledge.html", "#plist a")
+        tabs = [b.inner_text() for b in p.query_selector_all("#tabs .tab")]
+        assert (tabs == ["Pages", "Needs attention", "Change requests"]) == admin, (uid, tabs)
+        statuses = [o.inner_text() for o in p.query_selector_all("#f-status option")]
+        assert ("Draft" in statuses) == admin
+        listing = text(p, "#plist")
+        assert ("KA-60" in listing) == admin and ("expired" in listing.lower()) == admin, uid
+
+
+def test_intake_channel_select_and_whitespace_submit(web):
+    web.as_user("U1")
+    p = web.go("/intake.html", "#req-text")
+    assert [o.inner_text() for o in p.query_selector_all("#req-channel option")] == ["portal", "email", "whatsapp", "sms"]
+    assert p.is_disabled("#submit")
+    p.fill("#req-text", "    \n   ")
+    assert p.is_disabled("#submit")
+    p.fill("#req-text", S1)
+    assert not p.is_disabled("#submit")
+    p.select_option("#req-channel", "email")
+    p.click("#submit")
+    p.wait_for_selector("#run a.btn.primary", timeout=T)
+    assert "Answered automatically" in text(p, "#run")
+
+
+def test_reset_button_is_hidden_for_other_roles(web):
+    for uid in ("U1", "U2", "U5", "U6", "U7"):
+        web.as_user(uid)
+        p = web.go("/index.html", ".kpi, .banner")
+        assert p.query_selector("#reset-demo") is None, uid

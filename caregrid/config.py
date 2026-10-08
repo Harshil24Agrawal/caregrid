@@ -72,3 +72,4 @@ EVAL_DIR = ROOT / "eval"
 
 STORE_BACKEND = _str("STORE_BACKEND", "sqlite")  # sqlite | dynamodb (later)
 COMMS_EMAIL = _str("COMMS_EMAIL", "simulated")  # simulated | sns (later)
+COMMS_HASH_SALT = _str("COMMS_HASH_SALT", "caregrid-demo-salt")   # salt for the recipient dedup hash (change it outside the demo)

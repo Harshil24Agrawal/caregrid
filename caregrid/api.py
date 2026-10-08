@@ -14,17 +14,18 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from caregrid import config
 from caregrid.insights import metrics
@@ -32,18 +33,27 @@ from caregrid.insights.graph import case_graph
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.lint import lint
 from caregrid.llm import get_llm, model_name
-from caregrid.models import Case, Channel, DecisionCode, ReviewAction, ReviewDecision, State, User
+from caregrid.models import Case, Channel, DecisionCode, PageStatus, ReviewAction, ReviewDecision, Role, State, User
 from caregrid.rbac import can_approve, can_view, visible_cases
 from caregrid.reasoning.guards import check_output
 from caregrid.reasoning.pipeline import run
 from caregrid.seed import load_users
 from caregrid.store import SQLiteStore
 from caregrid.workflow import assistant as assistant_mod
+from caregrid.workflow.audit import log as audit_log
 from caregrid.workflow.decisions import DECIDABLE, AlreadyDecidedError, submit_decision
 from caregrid.workflow.prs import PRStateError, decide_pr
 
 RESTRICTED_LINE = "ACCESS RESTRICTED: you don't have permission to view this information."
 MAX_REQUEST_CHARS = 4000
+RESET_ROLES = {Role.OPS_MANAGER, Role.SENIOR_REVIEWER}                                   # who may reset the demo (when DEMO_MODE=1)
+KNOWLEDGE_ADMIN_ROLES = {Role.KNOWLEDGE_OWNER, Role.OPS_MANAGER, Role.SENIOR_REVIEWER, Role.AUDITOR}   # may see drafts, lint, PRs, the brain log
+DEMO_USER_IDS = {"U1", "U2", "U3", "U4", "U5", "U6", "U7"}
+
+
+def demo_mode() -> bool:
+    """DEMO_MODE=1 enables /api/reset. `cli serve` sets it to 1 by default; any other process has it off unless the environment says so."""
+    return os.environ.get("DEMO_MODE", "0") == "1"
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 app = FastAPI(title="CareGrid API", version="1.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
@@ -79,11 +89,14 @@ def get_store() -> SQLiteStore:
 
 
 # ------------------------------------------------------------------ auth, errors
-def actor(x_caregrid_user: str | None = Header(default=None)) -> User:
-    us = load_users(config.DATA_DIR)
-    user = us.get((x_caregrid_user or "").strip().upper())
+def actor(request: Request) -> User:
+    values = request.headers.getlist("x-caregrid-user")
+    if len(values) > 1:
+        raise HTTPException(status_code=400, detail="Send the X-CareGrid-User header once.")
+    value = values[0] if values else ""
+    user = load_users(config.DATA_DIR).get(value) if value in DEMO_USER_IDS else None          # exact U1..U7: no trimming, no case folding
     if user is None:
-        raise HTTPException(status_code=401, detail="Unknown or missing X-CareGrid-User header (demo auth: U1..U7).")
+        raise HTTPException(status_code=401, detail="Unknown or missing X-CareGrid-User header (demo auth: exactly U1..U7).")
     return user
 
 
@@ -105,7 +118,7 @@ async def _pr_conflict(_: Request, exc: PRStateError):
 @app.exception_handler(RequestValidationError)
 async def _invalid(_: Request, exc: RequestValidationError):
     # the default handler echoes the submitted value back ("input"): never echo request text
-    errors = [{"loc": list(e.get("loc", [])), "msg": e.get("msg"), "type": e.get("type")} for e in exc.errors()]
+    errors = [{"loc": list(e.get("loc", [])), "msg": str(e.get("msg", "")).removeprefix("Value error, "), "type": e.get("type")} for e in exc.errors()]
     return JSONResponse(status_code=422, content={"detail": errors})
 
 
@@ -154,11 +167,12 @@ def approval_gate(user: User, case: Case) -> dict:
     elif case.requester.id == user.id:
         why = "Separation of duties: you cannot approve your own request."
     elif case.rules is None or user.role.value not in {"team_specialist", "ops_manager", "senior_reviewer"}:
-        why = f"The {user.role.value} role cannot approve cases."
+        why = f"Your role ({user.role.value.replace('_', ' ')}) cannot approve cases."
     elif user.role.value == "team_specialist" and user.team != case.assigned_team:
-        why = f"This case belongs to {case.assigned_team}; you are in {user.team}."
+        why = f"This case belongs to {case.assigned_team}; your team is {user.team}."
     else:
-        why = f"{case.rules.risk.value.upper()} risk requires {case.approver_role.value if case.approver_role else 'a more senior reviewer'}."
+        need = case.approver_role.value.replace("_", " ") if case.approver_role else "senior reviewer"
+        why = f"{case.rules.risk.value.upper()} risk needs a {need}."
     decidable = case.state in DECIDABLE or case.state == State.NEEDS_INFO
     return {"decidable": decidable, "state": case.state.value,
             "approve": {"allowed": ok and case.state in DECIDABLE, "reason": why or ("" if case.state in DECIDABLE else f"Case is {case.state.value}.")},
@@ -285,7 +299,8 @@ def api_users():
 def api_config():
     llm = get_llm_client()
     return {"llm_provider": config.LLM_PROVIDER, "models": {"light": model_name(llm, "light"), "strong": model_name(llm, "strong")},
-            "embed_provider": config.EMBED_PROVIDER, "max_request_chars": MAX_REQUEST_CHARS,
+            "embed_provider": config.EMBED_PROVIDER, "max_request_chars": MAX_REQUEST_CHARS, "demo_mode": demo_mode(),
+            "reset_roles": sorted(r.value for r in RESET_ROLES), "knowledge_admin_roles": sorted(r.value for r in KNOWLEDGE_ADMIN_ROLES),
             "auth": "demo header X-CareGrid-User (not real authentication)"}
 
 
@@ -293,6 +308,12 @@ def api_config():
 def api_reset(user: User = Depends(actor)):
     from caregrid.admin import reset_demo
 
+    reason = None if demo_mode() else "DEMO_MODE is off"
+    if reason is None and user.role not in RESET_ROLES:
+        reason = f"role {user.role.value} may not reset"
+    if reason is not None:
+        audit_log(get_store(), "reset_denied", user, None, reason=reason, role=user.role.value)
+        raise HTTPException(status_code=403, detail="Reset is only available in demo mode to an ops manager or a senior reviewer.")
     with _lock:
         result = reset_demo(brain=get_brain())
     return {"ok": True, "seeded": result["seeded"], "brain": result["brain"], "leak_findings": len(result["leak_findings"])}
@@ -300,8 +321,17 @@ def api_reset(user: User = Depends(actor)):
 
 # ------------------------------------------------------------------ requests and cases
 class RequestIn(BaseModel):
-    text: str = Field(min_length=1, max_length=MAX_REQUEST_CHARS)
+    text: str = Field(max_length=MAX_REQUEST_CHARS)
     channel: Channel = Channel.PORTAL
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                raise ValueError("Please describe the request.")      # never echo the (empty) input
+        return v
 
 
 @app.post("/api/requests")
@@ -328,7 +358,9 @@ def api_case(case_id: str, user: User = Depends(actor)):
 @app.get("/api/cases/{case_id}/graph")
 def api_case_graph(case_id: str, user: User = Depends(actor)):
     store, brain = get_store(), get_brain()
-    must_get_case(case_id, user, store)
+    case = must_get_case(case_id, user, store)
+    if not can_view(user, case, "full"):                    # the graph shows page statuses (stale / expired): not for summary-only roles
+        raise PermissionError(case_id)
     return scrub(case_graph(case_id, user, store, brain).model_dump(), user)
 
 
@@ -445,33 +477,57 @@ def api_scorecard(user: User = Depends(actor)):
 
 
 # ------------------------------------------------------------------ knowledge
+def knowledge_admin(user: User) -> bool:
+    return user.role in KNOWLEDGE_ADMIN_ROLES
+
+
+def require_knowledge_admin(user: User) -> None:
+    if not knowledge_admin(user):
+        raise PermissionError("knowledge admin")
+
+
 @app.get("/api/pages")
 def api_pages(type: str | None = None, status: str | None = None, q: str | None = None, user: User = Depends(actor)):
+    """Everyone sees APPROVED current pages and ACTIVE precedents; drafts, expired versions and stale precedents only for knowledge admins."""
     brain = get_brain()
     rows = [{"id": p.id, "version": p.version, "type": p.type.value, "status": p.status.value, "title": p.title,
              "effective_from": p.effective_from.isoformat() if p.effective_from else None, "request_types": p.request_types}
             for p in brain.all_pages()]
     rows += [{"id": r.id, "version": 1, "type": "precedent", "status": r.status.value, "title": f"{r.request_type}: {r.summary[:70]}",
               "effective_from": r.date.isoformat() if r.date else None, "request_types": [r.request_type]} for r in brain.precedents()]
+    if not knowledge_admin(user):
+        rows = [r for r in rows if r["status"] in (PageStatus.APPROVED.value, PageStatus.ACTIVE.value) and _is_current(brain, r)]
     rows = [r for r in rows if (not type or r["type"] == type) and (not status or r["status"] == status)
             and (not q or q.lower() in r["id"].lower() or q.lower() in r["title"].lower())]
     return scrub(sorted(rows, key=lambda r: (r["id"], -r["version"])), user)
 
 
+def _is_current(brain: Brain, row: dict) -> bool:
+    if row["type"] == "precedent":
+        return True                                            # status ACTIVE already checked
+    current = brain.get(row["id"])
+    return current is not None and current.version == row["version"]
+
+
 @app.get("/api/pages/{page_id}")
 def api_page(page_id: str, version: int | None = None, user: User = Depends(actor)):
     brain = get_brain()
+    admin = knowledge_admin(user)
     prec = brain.get_precedent(page_id)
     if prec is not None:
+        if not admin and prec.status != PageStatus.ACTIVE:
+            raise HTTPException(status_code=404, detail="Unknown page.")
         return scrub({"id": prec.id, "type": "precedent", "version": 1, "status": prec.status.value, "title": prec.summary[:80],
                       "body": prec.summary, "meta": {"request_type": prec.request_type, "decision_code": prec.decision_code.value,
                                                       "route_team": prec.route_team, "policy_id": prec.policy_id,
                                                       "policy_version": prec.policy_version, "outcome": prec.outcome},
                       "links": [], "versions": [{"version": 1, "status": prec.status.value}]}, user)
     page = brain.get(page_id, version)
-    if page is None:
-        raise HTTPException(status_code=404, detail="Unknown page.")
-    versions = [{"version": p.version, "status": p.status.value} for p in brain.all_pages() if p.id == page_id]
+    current = brain.get(page_id)
+    if page is None or (not admin and (current is None or page.version != current.version or page.status != PageStatus.APPROVED)):
+        raise HTTPException(status_code=404, detail="Unknown page.")           # hidden versions look the same as missing ones
+    versions = [{"version": p.version, "status": p.status.value} for p in brain.all_pages() if p.id == page_id
+                and (admin or (current is not None and p.version == current.version))]
     return scrub({"id": page.id, "type": page.type.value, "version": page.version, "status": page.status.value, "title": page.title,
                   "owner": page.owner, "effective_from": page.effective_from.isoformat() if page.effective_from else None,
                   "request_types": page.request_types, "links": page.links, "body": page.body, "meta": page.meta,
@@ -480,6 +536,7 @@ def api_page(page_id: str, version: int | None = None, user: User = Depends(acto
 
 @app.get("/api/lint")
 def api_lint(user: User = Depends(actor)):
+    require_knowledge_admin(user)
     findings = lint(get_brain(), get_store())
     return scrub([f.model_dump() for f in findings], user)
 
@@ -488,6 +545,7 @@ def api_lint(user: User = Depends(actor)):
 def api_brain_file(name: str, user: User = Depends(actor)):
     if name not in ("index", "log"):
         raise HTTPException(status_code=404, detail="Unknown file.")
+    require_knowledge_admin(user)                              # index.md lists drafts; log.md lists every change
     path = get_brain().dir / f"{name}.md"
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if name == "log":
@@ -503,6 +561,7 @@ def pr_row(p) -> dict:
 
 @app.get("/api/prs")
 def api_prs(status: str | None = None, user: User = Depends(actor)):
+    require_knowledge_admin(user)
     return scrub([pr_row(p) for p in get_store().list_prs(status)], user)
 
 

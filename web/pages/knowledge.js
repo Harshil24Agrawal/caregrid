@@ -11,17 +11,20 @@
   var statusTag = function (s) { var x = STATUS[s] || [CG.human(s), 'grey']; return CG.tag(x[0], x[1], s); };
 
   el.innerHTML = '<div class="page-head"><h1>Knowledge</h1><p class="muted">The pages the assistant may cite. Drafts are never cited.</p></div><div class="tabs" id="tabs" role="tablist"></div><div id="body"></div>';
-  var TABS = [['pages', 'Pages'], ['lint', 'Needs attention'], ['prs', 'Change requests']];
+  var admin = CG.isKnowledgeAdmin();
+  var TABS = admin ? [['pages', 'Pages'], ['lint', 'Needs attention'], ['prs', 'Change requests']] : [['pages', 'Pages']];
+  if (!admin) tab = 'pages';
   function drawTabs() {
     document.getElementById('tabs').innerHTML = TABS.map(function (t) { return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('');
     CG.$$('#tabs .tab').forEach(function (b) { b.onclick = function () { tab = b.dataset.t; drawTabs(); show(); }; });
   }
   drawTabs(); show();
+  if (!admin) document.getElementById('tabs').insertAdjacentHTML('afterend', '<p class="small muted" id="role-note" style="margin:-6px 0 12px">Needs attention and change requests are not available for your role. You see approved pages only.</p>');
   function show() { var b = document.getElementById('body'); if (tab === 'pages') pagesTab(b); else if (tab === 'lint') lintTab(b); else prsTab(b); }
 
   // ------------------------------------------------------------ pages
   async function pagesTab(body) {
-    body.innerHTML = '<div class="grid g-kb"><div class="card"><div class="flex" style="margin-bottom:8px"><input id="f-q" type="search" placeholder="Search pages" aria-label="Search pages" style="flex:1"><select id="f-status" aria-label="Status"><option value="">All</option><option value="approved">Approved</option><option value="draft">Draft</option><option value="expired">Expired</option><option value="stale">Stale</option></select></div><div id="plist" class="scroll"></div></div><div id="pdetail"><div class="card">' + CG.empty('Pick a page from the list.') + '</div></div></div>';
+    body.innerHTML = '<div class="grid g-kb"><div class="card"><div class="flex" style="margin-bottom:8px"><input id="f-q" type="search" placeholder="Search pages" aria-label="Search pages" style="flex:1"><select id="f-status" aria-label="Status"><option value="">All</option><option value="approved">Approved</option>' + (admin ? '<option value="draft">Draft</option><option value="expired">Expired</option><option value="stale">Stale</option>' : '') + '</select></div><div id="plist" class="scroll"></div></div><div id="pdetail"><div class="card">' + CG.empty('Pick a page from the list.') + '</div></div></div>';
     var cur = CG.q('page'), curV = CG.q('v');
     async function loadList() {
       var p = new URLSearchParams();

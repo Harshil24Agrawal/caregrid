@@ -50,23 +50,6 @@ def new_audit_id() -> str:
 _REQ_ID = re.compile(r"^REQ-(\d+)$")
 
 
-def _remask_allowing(text: str, allowed: list[str], types: set[str]) -> str:
-    """Re-mask PII in `text` EXCEPT the exact strings in `allowed`."""
-    marks = {}
-    for i, a in enumerate(a for a in sorted(set(allowed), key=len, reverse=True) if a):
-        mark = f"ALLOWED{i}X"
-        if a in text:
-            text = text.replace(a, mark)
-            marks[mark] = a
-    found = detect_pii(text)
-    if found:
-        types.update(found)
-        text = anonymize(text, cueless=False)[0]
-    for mark, a in marks.items():
-        text = text.replace(mark, a)
-    return text
-
-
 def _remask(obj, types: set[str]):
     """Safety net: walk a dumped model, re-mask any string in which PII is still detected. Collects types only."""
     if isinstance(obj, str):
@@ -182,19 +165,14 @@ class SQLiteStore:
 
     # -- communications
     def save_comm(self, c: Communication) -> None:
-        """Safety net for outgoing messages. The reviewer's OFFICIAL contacts listed in `c.official_contacts` are the only PII
-        allowed in this record (explicit per-record allowlist, logged by count); anything else is re-masked."""
+        """Safety net for outgoing messages: NO exception. Raw contact details never reach the database; anything that still looks like PII
+        is re-masked and the re-mask is audited (types only)."""
         types: set[str] = set()
-        c = c.model_copy(update={"message": _remask_allowing(c.message, c.official_contacts, types),
-                                 "recipient": _remask_allowing(c.recipient, c.official_contacts, types)})
+        c = c.model_copy(update={"message": _remask(c.message, types), "recipient": _remask(c.recipient, types)})
         self._exec(
             "INSERT OR REPLACE INTO comms (id, case_id, ts, data) VALUES (?,?,?,?)",
             (c.id, c.case_id, c.ts.isoformat(), c.model_dump_json()),
         )
-        if c.official_contacts:
-            self.append_audit(AuditEvent(
-                id=new_audit_id(), ts=datetime.now(), case_id=c.case_id, actor_id="system", actor_role="system",
-                event="comms_contacts_allowlisted", details={"comm": c.id, "channel": c.channel.value, "count": len(c.official_contacts)}))
         if types:
             self.append_audit(AuditEvent(
                 id=new_audit_id(), ts=datetime.now(), case_id=c.case_id, actor_id="system", actor_role="system",

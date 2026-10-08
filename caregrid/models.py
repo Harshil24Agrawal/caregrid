@@ -229,7 +229,7 @@ class KnowledgePR(BaseModel):
 class Communication(BaseModel):
     id: str; case_id: str; channel: Channel; recipient: str
     message: str; status: Literal["simulated", "sent", "failed"]; ts: datetime
-    official_contacts: list[str] = []        # reviewer-provided OFFICIAL contacts allowed to appear in THIS record only (PII safety-net allowlist)
+    recipient_hash: str | None = None        # short salted hash of the raw recipient (dedup only); raw contacts are NEVER stored
 
 class LintFinding(BaseModel):
     severity: Literal["error", "warning", "info"]

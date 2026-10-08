@@ -48,8 +48,11 @@
   function rowsHtml() {
     var r = c.reviewer, p = c.proposal, locked = CG.isRestricted(r);
     var why;
-    if (c.routing === 'auto') why = '<span class="tag green">Auto</span> Answered automatically from approved policy. No person was needed.';
-    else why = (c.reason_codes.length ? CG.reasonChips(c.reason_codes) : '') + '<div class="small muted">' + (c.approver_role ? 'A ' + CG.esc(CG.role(c.approver_role).toLowerCase()) + ' in ' : 'A person in ') + CG.esc(CG.team(c.assigned_team)) + ' decides.</div>';
+    if (c.routing === 'auto') why = '<span class="tag green">Auto</span> Answered automatically from approved policy; no person was needed.';
+    else {
+      var because = c.reason_codes.slice(0, 2).map(function (x) { return CG.reasonLabel(x).toLowerCase(); }).join(' and ');
+      why = 'A ' + CG.esc(c.approver_role ? CG.role(c.approver_role).toLowerCase() : 'person') + ' at ' + CG.esc(CG.team(c.assigned_team)) + ' decides' + (because ? ', because: ' + CG.esc(because) : '') + '.';
+    }
     var risk = CG.riskTag(c.risk) + (locked ? '' : (r.risk_reasons.length ? '<ul style="margin:6px 0 0 18px;padding:0">' + r.risk_reasons.map(function (x) { return '<li>' + CG.esc(x) + '</li>'; }).join('') + '</ul>' : ''));
     var conf = locked ? (CG.band(c.confidence) + '<div class="small muted" style="margin-top:6px">Details are limited for your role.</div>') : (r.confidence ? CG.confidenceBar(r.confidence) : CG.empty('Not scored.'));
     var missing = locked ? CG.lock(r) : (r.missing_fields.length || Object.keys(r.invalid_fields).length ?
@@ -75,10 +78,10 @@
         (r.communications.length ? '<div class="small">Messages: ' + r.communications.map(function (m) { return CG.esc(m.channel + ' (' + m.status + ')'); }).join(', ') + '</div>' : '') + '</div></div>';
     }
     if (!a.decidable) return '<div class="card" id="decide"><h2>Decide</h2>' + done + (done ? '' : '<p class="muted" style="margin-top:6px">This case is ' + CG.esc(CG.human(c.state).toLowerCase()) + ': there is nothing to decide.</p>') + '</div>';
-    if (!a.approve.allowed && !a.ask.allowed) return '<div class="card" id="decide"><h2>Decide</h2>' + done + '<div class="lock" style="margin-top:10px"><span aria-hidden="true">🔒</span><span>You can’t decide this case. ' + CG.esc(a.approve.reason) + '</span></div></div>';
+    if (!a.approve.allowed && !a.ask.allowed) return '<div class="card" id="decide"><h2>Decide</h2>' + done + '<div class="lock" style="margin-top:10px"><span aria-hidden="true">🔒</span><span>' + CG.esc(a.approve.reason) + '</span></div></div>';
     var policies = c.proposal ? c.proposal.citations.filter(function (x) { return x.page_type === 'policy'; }) : [];
     var ACTIONS = [['approve', 'Approve'], ['edit_approve', 'Edit and approve'], ['reject', 'Reject'], ['escalate', 'Escalate'], ['ask_requester', 'Ask requester']];
-    return '<div class="card" id="decide"><h2>Decide</h2>' + done + (a.approve.allowed ? '' : '<div class="lock" style="margin:10px 0"><span aria-hidden="true">🔒</span><span>Approving is disabled: ' + CG.esc(a.approve.reason) + '</span></div>') +
+    return '<div class="card" id="decide"><h2>Decide</h2>' + done + (a.approve.allowed ? '' : '<div class="lock" style="margin:10px 0"><span aria-hidden="true">🔒</span><span>' + CG.esc(a.approve.reason) + '</span></div>') +
       '<div class="flex" style="margin:10px 0" id="actions" role="radiogroup" aria-label="Decision">' + ACTIONS.map(function (x, i) {
         var ok = x[0] === 'ask_requester' ? a.ask.allowed : a.approve.allowed;
         return '<label class="chip' + (ok ? '' : ' dim') + '"><input type="radio" name="action" value="' + x[0] + '" ' + (ok ? '' : 'disabled ') + (i === 0 && a.approve.allowed ? 'checked' : '') + '> ' + x[1] + '</label>';

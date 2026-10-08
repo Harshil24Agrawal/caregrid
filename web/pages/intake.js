@@ -11,7 +11,7 @@
 
   el.innerHTML = '<div class="page-head"><h1>New request</h1><p class="muted">Type what you need. Personal data is masked on the server before anything is stored or sent to a model.</p></div>' +
     '<div class="card"><label for="req-text" class="sr-only">Request</label><textarea id="req-text" rows="7" placeholder="Describe the request…"></textarea>' +
-    '<div class="flex" style="margin-top:10px"><button id="submit" class="btn primary" type="button" disabled>Submit</button><span id="counter" class="small muted mono">0 / ' + MAX + '</span>' +
+    '<div class="flex" style="margin-top:10px"><button id="submit" class="btn primary" type="button" disabled>Submit</button><label class="small muted" for="req-channel">Channel</label><select id="req-channel" aria-label="Channel"><option>portal</option><option>email</option><option>whatsapp</option><option>sms</option></select><span id="counter" class="small muted mono">0 / ' + MAX + '</span>' +
     '<span class="right small muted">Try an example:</span><span id="examples"></span></div></div>' +
     '<div class="card" id="run" style="display:none"></div>';
 
@@ -20,7 +20,7 @@
     var n = ta.value.length;
     counter.textContent = n + ' / ' + MAX;
     counter.style.color = n > MAX ? 'var(--red)' : '';
-    btn.disabled = n === 0 || n > MAX;
+    btn.disabled = ta.value.trim().length === 0 || n > MAX;
   }
   ta.addEventListener('input', refresh);
   document.getElementById('examples').innerHTML = EXAMPLES.map(function (x, i) { return '<button type="button" class="chip" data-i="' + i + '">' + CG.esc(x[0]) + '</button>'; }).join('');
@@ -56,6 +56,7 @@
   btn.onclick = async function () {
     var text = ta.value;
     if (!text.trim() || text.length > MAX) return;
+    var channel = document.getElementById('req-channel').value;
     ta.value = '';                                  // cleared at once: the browser keeps no copy after sending
     refresh();
     btn.disabled = true;
@@ -66,7 +67,7 @@
     paint();
     var timer = setInterval(function () { step = Math.min(step + 1, CG.STEPS.length - 1); paint(); }, 450);   // cosmetic progress only
     try {
-      var res = await CG_API.post('/api/requests', { text: text });
+      var res = await CG_API.post('/api/requests', { text: text, channel: channel });
       text = null;
       clearInterval(timer);
       var c = res.case, events = [];

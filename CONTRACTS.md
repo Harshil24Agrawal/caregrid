@@ -240,7 +240,7 @@ class KnowledgePR(BaseModel):
 class Communication(BaseModel):
     id: str; case_id: str; channel: Channel; recipient: str
     message: str; status: Literal["simulated", "sent", "failed"]; ts: datetime
-    official_contacts: list[str] = []        # reviewer-provided OFFICIAL contacts allowed to appear in THIS record only (PII safety-net allowlist)
+    recipient_hash: str | None = None        # short salted hash of the raw recipient (dedup only); raw contacts are NEVER stored
 
 class LintFinding(BaseModel):
     severity: Literal["error", "warning", "info"]
@@ -431,6 +431,13 @@ Two approved policies for the same request type with contradictory `meta.rule_ke
 | knowledge_owner | pages, PRs, lint; cases: summary | PRs only |
 | auditor | all audit + cases: summary (read-only) | — |
 
+**Knowledge visibility (HTTP API).** `ops_employee` and `team_specialist` see only APPROVED current pages and ACTIVE precedents through `/api/pages` and
+`/api/pages/{id}`; drafts, expired versions and stale precedents answer 404 for them. `/api/lint`, `/api/prs` (read), `/api/brain/index` and `/api/brain/log`
+are 403 for them. `knowledge_owner`, `ops_manager`, `senior_reviewer` and `auditor` see everything. Only `knowledge_owner` decides PRs.
+
+**Reset (HTTP API).** `POST /api/reset` needs `DEMO_MODE=1` (set by `cli serve`; off elsewhere) AND the role `ops_manager` or `senior_reviewer`; otherwise 403 and an
+audit event `reset_denied`. **Demo auth:** the header `X-CareGrid-User` must be exactly `U1`..`U7`; a duplicated header is 400.
+
 ---
 
 ## 13. Workflow API as built in Phase 5 (clarifications and deviations from sections 3, 8, 9, 12)
@@ -458,8 +465,10 @@ Two approved policies for the same request type with contradictory `meta.rule_ke
 * **Trust.** `record_review` takes optional `brain` (for the `never_auto` ceiling and workflow risk), `case_id` and `actor` (for the `trust_updated` audit event).
 * **Precedent facts** are exactly `derive_case_facts(workflow, classification, topic)` (section 10); `policy_id/version` = the top cited POLICY citation at its
   current version. The Brain is updated in memory and on disk.
-* **Communication** gained `official_contacts: list[str]`, the explicit per-record PII allowlist. `Store.save_comm` re-masks everything else; `leak_scan_store`
-  honours the same list. `Store` gained `list_trust()`.
+* **Communication** stores NO raw contact: `recipient` is the masked placeholder (`[EMAIL]` / `[PHONE]`, or the requester id for the portal), the message says
+  "For queries: [EMAIL] · [PHONE]", and `recipient_hash` is a short salted hash (`COMMS_HASH_SALT`) used only to avoid sending the same recipient twice. Raw values
+  exist only in memory while the (simulated) message is sent. `Store.save_comm` has no allowlist exception; `leak_scan_store` scans comms like everything else.
+  `Store` gained `list_trust()`.
 * **Amounts** in a requester message come only from `billing.csv` (invoices in `case.related["invoice"]`); any rupee amount in model/reviewer text is replaced by
   `[amount omitted]`.
 * **Metrics.** `gap_radar` rows: `request_type, reason_code, topic, count, avg_hours_in_queue, est_hours_saved`, with `est_hours_saved = count * avg_hours_in_queue`

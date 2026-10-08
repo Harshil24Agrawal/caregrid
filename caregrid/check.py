@@ -172,6 +172,12 @@ def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) ->
             "ops employee never gets the amount": "62,500" not in asha_all and "62500" not in asha_all,
             "assistant restricts the amount question": "ACCESS RESTRICTED" in asha_all,
             "only the knowledge owner decides PRs": c.post("/api/prs/PR-none/decision", headers=h("U4"), json={"approve": True}).status_code == 403,
+            "reset refused to an ops employee": c.post("/api/reset", headers=h("U1")).status_code == 403,
+            "header must match U1..U7 exactly": c.get("/api/cases", headers=h("u1")).status_code == 401,
+            "duplicate user header -> 400": c.get("/api/cases", headers=[("X-CareGrid-User", "U1"), ("X-CareGrid-User", "U2")]).status_code == 400,
+            "whitespace-only request -> 422": c.post("/api/requests", headers=h("U1"), json={"text": "   "}).status_code == 422,
+            "drafts hidden from an ops employee": not any(p["status"] == "draft" for p in c.get("/api/pages", headers=h("U1")).json())
+            and c.get("/api/lint", headers=h("U1")).status_code == 403,
         }
         failed_probes = [k for k, v in probes.items() if not v]
         item("API smoke (auth, RBAC, amount rule)", not failed_probes, f"{len(probes) - len(failed_probes)}/{len(probes)} probes"

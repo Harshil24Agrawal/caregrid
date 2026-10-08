@@ -30,6 +30,7 @@ def client(tmp_path_factory):
     for name, val in (("DATA_DIR", root / "data"), ("BRAIN_DIR", root / "brain"), ("EVAL_DIR", root / "eval"), ("DB_PATH", root / "db.sqlite"),
                       ("LLM_PROVIDER", "mock")):
         mp.setattr(config, name, val)
+    mp.setenv("DEMO_MODE", "1")
     api.reset_process_state()
     reset_demo()
     yield TestClient(app=api.app)
@@ -218,15 +219,15 @@ def test_s7_knowledge_pr_loop(client):
 
 # ------------------------------------------------------------------ knowledge, metrics, audit
 def test_pages_lint_scorecard_metrics_audit_comms(client):
-    pages = client.get("/api/pages", headers=H["asha"]).json()
+    pages = client.get("/api/pages", headers=H["neha"]).json()
     ka12 = [p for p in pages if p["id"] == "KA-12"]
     assert {p["version"]: p["status"] for p in ka12}.get(2) == "expired" and {p["version"]: p["status"] for p in ka12}.get(3) == "approved"
     assert any(p["id"] == "KA-60" and p["status"] == "draft" for p in pages)
-    assert all(p["type"] == "policy" for p in client.get("/api/pages?type=policy", headers=H["asha"]).json())
-    page = client.get("/api/pages/KA-12?version=2", headers=H["asha"]).json()
-    assert page["status"] == "expired" and [v["version"] for v in page["versions"]] == [1, 2, 3] or len(page["versions"]) >= 2
-    assert client.get("/api/pages/NOPE", headers=H["asha"]).status_code == 404
-    assert client.get("/api/brain/index", headers=H["asha"]).json()["text"]
+    assert all(p["type"] == "policy" for p in client.get("/api/pages?type=policy", headers=H["neha"]).json())
+    page = client.get("/api/pages/KA-12?version=2", headers=H["neha"]).json()
+    assert page["status"] == "expired" and len(page["versions"]) >= 2
+    assert client.get("/api/pages/NOPE", headers=H["neha"]).status_code == 404
+    assert client.get("/api/brain/index", headers=H["neha"]).json()["text"]
     m = client.get("/api/metrics", headers=H["rahul"]).json()
     assert m["counts"]["total"] >= 21 and m["trust"] and "queue_aging" in m and "cost_split" in m and m["trust_thresholds"]["l1_streak"]
     assert client.get("/api/metrics", headers=H["vikram"]).json()["counts"]["total"] < m["counts"]["total"]    # only his team's cases
@@ -240,7 +241,112 @@ def test_pages_lint_scorecard_metrics_audit_comms(client):
 
 
 def test_reset_restores_the_demo(client):
-    assert client.post("/api/reset", headers=H["neha"]).json()["ok"] is True
+    assert client.post("/api/reset", headers=H["neha"]).json()["ok"] is True      # an ops manager, DEMO_MODE=1
     cases = client.get("/api/cases", headers=H["neha"]).json()
     assert any(c["id"] == "CASE-1024" and c["state"] == "in_review" for c in cases)
     assert client.get("/api/prs", headers=H["meera"]).json() == []
+
+
+# ================================================================== review hardening
+def test_reset_needs_demo_mode_and_a_manager_or_senior(client, monkeypatch):
+    for who in ("asha", "vikram", "meera", "arjun", "kiran"):
+        r = client.post("/api/reset", headers=H[who])
+        assert r.status_code == 403, who
+    denied = [e for e in client.get("/api/audit?event=reset_denied", headers=H["arjun"]).json()["events"]]
+    assert len(denied) >= 5 and {e["actor_id"] for e in denied} >= {"U1", "U2", "U5", "U6", "U7"}
+    assert all(e["details"]["reason"].startswith("role") for e in denied)
+    monkeypatch.setenv("DEMO_MODE", "0")                                       # allowed role, but demo mode is off
+    r = client.post("/api/reset", headers=H["rahul"])
+    assert r.status_code == 403
+    assert client.get("/api/audit?event=reset_denied", headers=H["arjun"]).json()["events"][0]["details"]["reason"] == "DEMO_MODE is off"
+    assert client.get("/api/config").json()["demo_mode"] is False
+    monkeypatch.setenv("DEMO_MODE", "1")
+    cfg = client.get("/api/config").json()
+    assert cfg["demo_mode"] is True and cfg["reset_roles"] == ["ops_manager", "senior_reviewer"]
+    assert client.post("/api/reset", headers=H["rahul"]).status_code == 200
+
+
+def test_cli_serve_turns_demo_mode_on_by_default(monkeypatch):
+    import os
+    import sys
+    import types
+
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    fake = types.SimpleNamespace(run=lambda *a, **k: None)
+    monkeypatch.setitem(sys.modules, "uvicorn", fake)
+    from caregrid.cli import cmd_serve
+
+    cmd_serve(port=8765)
+    assert os.environ["DEMO_MODE"] == "1"
+    monkeypatch.setenv("DEMO_MODE", "0")
+    cmd_serve(port=8765)
+    assert os.environ["DEMO_MODE"] == "0"                                      # an explicit setting wins
+
+
+def test_no_raw_contact_anywhere_in_sqlite_after_s5(client):
+    client.post("/api/reset", headers=H["neha"])
+    r = decide(client, "rahul", "CASE-1024", channels=["email", "whatsapp"], contact_email="dme.desk@clinic-supplies.example", contact_phone="+91 98100 12345")
+    assert r.status_code == 200
+    comms = client.get("/api/comms", headers=H["rahul"]).json()
+    assert {c["recipient"] for c in comms if c["case_id"] == "CASE-1024"} == {"[EMAIL]", "[PHONE]"}
+    assert all("For queries: [EMAIL] \u00b7 [PHONE]" in c["message"] for c in comms if c["case_id"] == "CASE-1024")
+    con = sqlite3.connect(config.DB_PATH)
+    dump = "\n".join(str(row) for table in ("cases", "audit", "comms", "prs", "trust") for row in con.execute(f"SELECT * FROM {table}"))
+    con.close()
+    for raw in ("dme.desk", "clinic-supplies", "98100", "12345"):
+        assert raw not in dump, raw
+    assert "[EMAIL]" in dump and "recipient_hash" in dump
+
+
+def test_knowledge_visibility_by_role(client):
+    for who in ("asha", "vikram"):                                             # ops_employee, team_specialist
+        pages = client.get("/api/pages", headers=H[who]).json()
+        assert pages and {p["status"] for p in pages} <= {"approved", "active"}
+        ka12 = [p for p in pages if p["id"] == "KA-12"]
+        assert [(p["version"], p["status"]) for p in ka12] == [(3, "approved")]
+        assert not any(p["id"] == "KA-60" for p in pages)
+        assert client.get("/api/pages/KA-60", headers=H[who]).status_code == 404
+        assert client.get("/api/pages/KA-12?version=2", headers=H[who]).status_code == 404
+        ok = client.get("/api/pages/KA-12", headers=H[who]).json()
+        assert ok["version"] == 3 and [v["version"] for v in ok["versions"]] == [3]
+        for path in ("/api/lint", "/api/prs", "/api/brain/log", "/api/brain/index"):
+            assert client.get(path, headers=H[who]).status_code == 403, (who, path)
+        assert client.get("/api/pages?status=draft", headers=H[who]).json() == []
+    for who in ("meera", "neha", "rahul", "arjun"):
+        assert any(p["id"] == "KA-60" for p in client.get("/api/pages", headers=H[who]).json())
+        assert client.get("/api/pages/KA-12?version=2", headers=H[who]).status_code == 200
+        for path in ("/api/lint", "/api/prs", "/api/brain/log"):
+            assert client.get(path, headers=H[who]).status_code == 200, (who, path)
+    stale = [p for p in client.get("/api/pages", headers=H["meera"]).json() if p["status"] == "stale"]
+    assert stale and not any(p["status"] == "stale" for p in client.get("/api/pages", headers=H["asha"]).json())
+    assert client.get(f"/api/pages/{stale[0]['id']}", headers=H["asha"]).status_code == 404
+    assert client.get("/api/cases/CASE-1024/graph", headers=H["asha"]).status_code == 403
+
+
+def test_user_header_is_exact_and_not_duplicated(client):
+    for bad in ("u1", " U1", "U1 ", "U8", "U01", "U1,U2", "1", "ASHA"):
+        assert client.get("/api/cases", headers={"X-CareGrid-User": bad}).status_code in (401, 400), bad
+        assert client.get("/api/cases", headers={"X-CareGrid-User": bad}).status_code != 200, bad
+    assert client.get("/api/cases", headers={"X-CareGrid-User": "U1"}).status_code == 200
+    two = [("X-CareGrid-User", "U1"), ("X-CareGrid-User", "U4")]
+    assert client.get("/api/cases", headers=two).status_code == 400
+    assert client.get("/api/cases", headers=[("X-CareGrid-User", "U1"), ("X-CareGrid-User", "U1")]).status_code == 400
+
+
+def test_empty_or_whitespace_request_is_rejected_without_an_echo(client):
+    before = len(client.get("/api/cases", headers=H["asha"]).json())
+    for text in ("", " ", "   \n\t  ", "\u00a0 "):
+        r = client.post("/api/requests", headers=H["asha"], json={"text": text})
+        assert r.status_code == 422 and "Please describe the request." in r.text, repr(text)
+        assert text.strip() == "" and "input" not in r.json()["detail"][0]
+    assert len(client.get("/api/cases", headers=H["asha"]).json()) == before
+    padded = client.post("/api/requests", headers=H["asha"], json={"text": "   " + S1 + "   "})
+    assert padded.status_code == 200 and padded.json()["case"]["masked_text"].startswith("What supporting")
+    assert client.post("/api/requests", headers=H["asha"], json={"text": "x" * 4001}).status_code == 422
+
+
+def test_approval_reason_is_the_role_rule_only(client):
+    neha = client.get("/api/cases/CASE-1024", headers=H["neha"]).json()
+    why = neha["actions"]["approve"]["reason"]
+    assert why == "HIGH risk needs a senior reviewer." or why == "HIGH risk needs a senior reviewer"
+    assert "POLICY" not in why and "reason" not in why.lower()

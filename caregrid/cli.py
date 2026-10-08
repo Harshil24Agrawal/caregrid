@@ -183,8 +183,11 @@ def cmd_eval(provider: str = "mock", limit: int | None = None, file: str | None 
 
 def cmd_serve(port: int = 8000, host: str = "127.0.0.1") -> int:
     """Serve the API and the static web UI (web/) on http://127.0.0.1:8000 . Reads LLM_PROVIDER from .env like every other command."""
+    import os
+
     import uvicorn
 
+    os.environ.setdefault("DEMO_MODE", "1")             # `serve` is the demo: Reset is allowed for ops managers and senior reviewers (set DEMO_MODE=0 to disable)
     print(f"CareGrid web UI: http://{host}:{port}/   (API docs: /api/docs)   LLM provider: {config.LLM_PROVIDER}")
     uvicorn.run("caregrid.api:app", host=host, port=port, log_level="warning")
     return 0

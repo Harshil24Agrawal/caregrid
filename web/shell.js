@@ -41,6 +41,8 @@
   CG.reasonChips = function (codes) {
     return (codes || []).map(function (c) { var x = REASON[c] || [CG.human(c), 'grey']; return '<span class="chip ' + x[1] + '" title="' + CG.esc(c) + '">' + CG.esc(x[0]) + '</span>'; }).join('');
   };
+  CG.canReset = function () { var c = CG.config; return !!(c && c.demo_mode && c.reset_roles.indexOf(CG.me.role) >= 0); };
+  CG.isKnowledgeAdmin = function () { var c = CG.config; return !!(c && c.knowledge_admin_roles.indexOf(CG.me.role) >= 0); };
   CG.eventName = function (e) { return EVENT[e] || CG.human(e); };
   CG.team = function (id) { return CG.teams[id] || id || ''; };
   CG.what = function (type) {
@@ -143,7 +145,7 @@
       '<span class="pill" id="phi-pill" title="Personal-data fields masked across the requests you can see"><span class="dot green"></span>PHI masked: <b id="phi-n">…</b></span>' +
       '<button class="pill" id="user-btn" type="button" aria-haspopup="true" title="Demo login: the acting user is sent as a header (not real authentication)"><span class="dot grey"></span>Demo login: ' +
       CG.esc(me.name + ' · ' + CG.role(me.role)) + ' ▾</button>' +
-      '<button class="pill" id="reset-demo" type="button">Reset demo</button></div></div>';
+      (CG.canReset() ? '<button class="pill" id="reset-demo" type="button">Reset demo</button>' : '') + '</div></div>';
     var nav = document.createElement('nav');
     nav.className = 'navstrip';
     nav.setAttribute('aria-label', 'Main');
@@ -165,7 +167,8 @@
       CG.$$('button', menu).forEach(function (b) { b.onclick = function () { CG_API.setUser(b.getAttribute('data-uid')); window.location.reload(); }; });
     };
     document.addEventListener('click', function () { var m = document.getElementById('user-menu'); if (m) m.remove(); });
-    document.getElementById('reset-demo').onclick = async function () {
+    var resetBtn = document.getElementById('reset-demo');
+    if (resetBtn) resetBtn.onclick = async function () {
       var ok = await CG.confirm('Reset the demo?', 'This wipes the database and learned precedents, recompiles the Second Brain and re-seeds the demo cases. It cannot be undone.', 'Reset demo');
       if (!ok) return;
       try { CG.toast('Resetting…'); await CG_API.post('/api/reset'); CG.toast('Demo reset.', 'ok'); setTimeout(function () { window.location.href = 'index.html'; }, 500); } catch (e) { CG.fail(e); }
