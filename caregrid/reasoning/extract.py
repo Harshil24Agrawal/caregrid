@@ -10,12 +10,22 @@ import re
 # Order matters: first hit wins. Complaint words outrank "claim" so "claim denials" + "lawyer" is a complaint.
 TYPE_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("provider_address_change", re.compile(r"address", re.I)),
-    ("provider_name_change", re.compile(r"name change|changed (?:her |his |their |the )?(?:last )?name|\brename|legally changed", re.I)),
+    ("provider_name_change", re.compile(
+        r"name change|changed (?:her |his |their |the )?(?:last |sur)?name|\brename|legally changed|\bsurnames?\b|maiden name|"
+        r"\bafter (?:her |his |their |the )?(?:marriage|wedding|divorce)\b|\bname (?:was |has been |is |got |had been )?(?:updated|changed|corrected)\b",
+        re.I)),
     ("portal_access_reset", re.compile(r"password|log ?in\b|can't log|portal access|locked", re.I)),
-    ("prior_auth_status", re.compile(r"prior auth|authori[sz]ation status", re.I)),
+    ("prior_auth_status", re.compile(
+        r"prior[- ]?auth|pre-?auth|\bPA-\d{4}-\d{5}\b|authori[sz]ation\s+(?:status|number|id|request|decision|update|#)|"
+        r"\b(?:status|update|decision|outcome|result)\s+(?:of|on|for)\s+(?:the |an? |my |our |this |that )?authori[sz]ation", re.I)),
     ("dme_equipment_request", re.compile(r"wheelchair|oxygen|equipment|\bDME\b|\bCPAP\b|\bE\d{4}\b", re.I)),
     ("complaint_grievance", re.compile(r"complain|grievance|lawyer|unacceptable", re.I)),
-    ("claim_status_inquiry", re.compile(r"\bclaims?\b|\bCLM-", re.I)),
+    # status intent is required: the bare word "claim(s)" ("claims team", "claims process") is not enough
+    ("claim_status_inquiry", re.compile(
+        r"\bCLM-\d+|\bclaim\s+(?:number|no\.?|id|#)|"
+        r"\b(?:status|update|progress|decision|outcome|result)\s+(?:of|on|for|with)\s+(?:the |an? |my |our |this |that |his |her |their )?claims?\b|"
+        r"\bclaims?\b[^.?!\n]{0,40}?\b(?:paid|unpaid|denied|rejected|pending|approved|processed|settled|stuck|delayed|status)\b|"
+        r"\b(?:paid|denied|rejected|pending|approved|processed|settled)\b[^.?!\n]{0,15}?\bclaims?\b", re.I)),
     ("general_policy_question", re.compile(
         r"what documents|which documents|supporting documents|how do i|polic(?:y|ies)|where can i find|\bforms?\b|\bSLAs?\b|"
         r"turnaround|escalation|what is the process|what are the", re.I)),
