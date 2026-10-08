@@ -134,6 +134,21 @@ class Brain:
         if not stale:
             self.rebuild_index()
 
+    def retire_page(self, page_id: str) -> list[str]:
+        """Retire the current version WITHOUT publishing a successor: it becomes EXPIRED, every active precedent that cites the policy
+        becomes STALE (whatever version it cited), the change is logged and the index rebuilt. Returns the ids that went stale."""
+        current = self._current(page_id)
+        if current is None:
+            raise KeyError(f"{page_id} has no approved current version to retire")
+        expired = current.model_copy(update={"status": PageStatus.EXPIRED})
+        self._pages[page_id][current.version] = expired
+        write_text(self.dir / page_relpath(expired), page_text(expired))
+        self.append_log("system", "retire_page", page_id, f"v{current.version} retired")
+        stale = self.mark_stale_for_policy(page_id, -1) if current.type == PageType.POLICY else []
+        if not stale:
+            self.rebuild_index()
+        return stale
+
     def mark_stale_for_policy(self, policy_id: str, current_version: int) -> list[str]:
         """Active precedents that cite `policy_id` at a version other than `current_version` become STALE."""
         changed: list[str] = []

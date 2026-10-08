@@ -208,6 +208,7 @@ class ReviewDecision(BaseModel):
     contact_email: str | None = None
     contact_phone: str | None = None
     channels: list[Channel] = [Channel.EMAIL]
+    meta_changes: dict = {}                  # optional structured change for the Knowledge PR: {"rule_key": str, "rule_value": str, "retire": True}
 
 class AuditEvent(BaseModel):
     id: str; ts: datetime; case_id: str | None; actor_id: str; actor_role: str
@@ -223,6 +224,7 @@ class KnowledgePR(BaseModel):
     reason: str; author_id: str
     status: Literal["open", "approved", "rejected"] = "open"
     created_at: datetime; decided_by: str | None = None
+    meta_changes: dict = {}                  # STRUCTURED changes (rule_key, rule_value, retire) - only ever copied from the human ReviewDecision, never from the LLM
 
 class Communication(BaseModel):
     id: str; case_id: str; channel: Channel; recipient: str

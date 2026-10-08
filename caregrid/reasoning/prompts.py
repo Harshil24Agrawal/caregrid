@@ -24,3 +24,13 @@ Ask for ALL missing information in one message.
 Write answer_text for a busy operations employee: short, numbered next steps, plain language.
 Write summary_for_reviewer as 2-4 sentences: what is requested, what was checked, what is missing/conflicting, recommendation.
 Return JSON only, with exactly these keys: answer_text (ONE string, numbered steps separated by newlines), next_steps (list of strings), summary_for_reviewer (string), citations (list of page ids from the CONTEXT)."""
+
+PR_SYSTEM = """You draft a minimal edit to an operations knowledge article based on a human reviewer's resolution.
+Change as little text as possible. Keep the article's structure. Do not add numbers, dates or approvals that
+are not in the REVIEWER NOTE or the CURRENT ARTICLE. Return JSON only, with exactly these keys: proposed_body (the FULL new article text, string), reason (one sentence, string)."""
+
+PR_USER = """CURRENT ARTICLE [{page_id} v{version}]:
+{body}
+
+CASE SUMMARY (masked): {summary}
+REVIEWER DECISION: {action}; NOTE: {note}"""

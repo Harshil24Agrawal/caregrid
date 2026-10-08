@@ -219,6 +219,7 @@ class ReviewDecision(BaseModel):
     contact_email: str | None = None
     contact_phone: str | None = None
     channels: list[Channel] = [Channel.EMAIL]
+    meta_changes: dict = {}                  # optional structured change for the Knowledge PR: {"rule_key": str, "rule_value": str, "retire": True}
 
 class AuditEvent(BaseModel):
     id: str; ts: datetime; case_id: str | None; actor_id: str; actor_role: str
@@ -234,6 +235,7 @@ class KnowledgePR(BaseModel):
     reason: str; author_id: str
     status: Literal["open", "approved", "rejected"] = "open"
     created_at: datetime; decided_by: str | None = None
+    meta_changes: dict = {}                  # STRUCTURED changes (rule_key, rule_value, retire) - only ever copied from the human ReviewDecision, never from the LLM
 
 class Communication(BaseModel):
     id: str; case_id: str; channel: Channel; recipient: str
@@ -462,3 +464,6 @@ Two approved policies for the same request type with contradictory `meta.rule_ke
   `[amount omitted]`.
 * **Metrics.** `gap_radar` rows: `request_type, reason_code, topic, count, avg_hours_in_queue, est_hours_saved`, with `est_hours_saved = count * avg_hours_in_queue`
   (hours-in-state of the OPEN cases in the row; portfolio average when the row has none).
+
+## 14. Knowledge PR flow (as built)
+`draft_pr(case, d, brain, llm, store=None) -> KnowledgePR | None` (extra optional `store` saves the PR; None = nothing to propose). `decide_pr` per §3, raising `PermissionError` (not knowledge_owner), `KeyError` (unknown), `PRStateError` (not open / base version outdated). `ReviewDecision.meta_changes` and `KnowledgePR.meta_changes` carry structured changes (`rule_key`+`rule_value`, `retire`) written only by humans. `Brain.retire_page(page_id) -> list[str]` returns ids of precedents made stale. Audit events: `pr_requested`, `pr_opened`, `pr_skipped`, `pr_decided`, `pr_denied`, `pr_rejected_request`.

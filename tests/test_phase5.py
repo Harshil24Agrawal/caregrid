@@ -330,13 +330,13 @@ def test_simulated_action_never_touches_billing_or_source_records(world, env):
     assert simulate_action(env.store.get_case(DEMO_CASE_ID)).startswith("Released the equipment request")
 
 
-def test_propose_pr_only_writes_an_audit_event(env):
+def test_propose_pr_opens_a_pr_and_leaves_the_brain_untouched(env):
     case = env.run(NAME_A)
     before_pages = {p.key for p in env.brain.all_pages()}
-    done = env.decide(case, env.vikram, propose_pr=True)
-    ev = env.audit(case.id, "pr_requested")
-    assert len(ev) == 1 and "after midnight" in ev[0].details["note"]
-    assert {p.key for p in env.brain.all_pages()} == before_pages and env.store.list_prs() == [] and done.state == State.ACTIONED
+    done = env.decide(case, env.vikram, propose_pr=True, note="Clarify the accepted document list.")
+    assert len(env.audit(case.id, "pr_requested")) == 1 and len(env.audit(case.id, "pr_opened")) == 1
+    assert len(env.store.list_prs("open")) == 1
+    assert {p.key for p in env.brain.all_pages()} == before_pages and done.state == State.ACTIONED
 
 
 def test_save_as_precedent_false_learns_nothing(env):

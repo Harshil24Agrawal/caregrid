@@ -189,7 +189,11 @@ class MockLLM(_JsonRetryMixin):
             return self._classify(user)
         if "draft a minimal edit" in system:
             m = re.search(r"CURRENT ARTICLE \[[^\]]*\]:\n(.*?)\n\nCASE SUMMARY", user, re.S)
-            return {"proposed_body": m.group(1) if m else "", "reason": "mock: no change drafted"}
+            n = re.search(r"NOTE: (.*)\Z", user, re.S)
+            body, note = (m.group(1) if m else ""), (n.group(1).strip() if n else "")
+            if not note:
+                return {"proposed_body": body, "reason": "mock: no reviewer note, no change drafted"}
+            return {"proposed_body": f"{body}\n\nReviewer clarification: {note}", "reason": "Adds the reviewer's clarification to the article."}
         if "You are CareGrid" in system:
             return mock_propose(user)
         return {"ok": True}

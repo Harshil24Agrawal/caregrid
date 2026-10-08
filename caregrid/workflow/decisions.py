@@ -15,6 +15,7 @@ from caregrid.store import Store
 from caregrid.workflow.audit import log
 from caregrid.workflow.comms import send_communications, validate_contacts
 from caregrid.workflow.precedents import capture_precedent
+from caregrid.workflow.prs import draft_pr, target_policy
 from caregrid.workflow.routing import set_state
 from caregrid.workflow.trust import record_review
 
@@ -89,8 +90,13 @@ def submit_decision(d: ReviewDecision, store: Store, brain: Brain, llm: LLM) -> 
         edited=edited is not None, edit_check=edit_issues, save_as_precedent=d.save_as_precedent, channels=[c.value for c in d.channels],
         propose_pr=d.propose_pr)
     if d.propose_pr:
-        policy = next((c.page_id for c in (case.proposal.citations if case.proposal else []) if c.page_type.value == "policy"), None)
-        log(store, "pr_requested", reviewer, case.id, target_page=policy, note="Knowledge PR flow arrives after midnight: request recorded only")
+        log(store, "pr_requested", reviewer, case.id, target_page=target_policy(case))
+        pr = draft_pr(case, d, brain, llm, store)
+        if pr is None:
+            log(store, "pr_skipped", reviewer, case.id, reason="no cited current policy or nothing to change")
+        else:
+            log(store, "pr_opened", reviewer, case.id, pr=pr.id, target_page=pr.target_page_id, base_version=pr.base_version,
+                structured=sorted(pr.meta_changes), reason=pr.reason)
     rtype = case.classification.request_type if case.classification else "unknown"
 
     # 4 act
