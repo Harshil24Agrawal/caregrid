@@ -79,6 +79,8 @@ python -m caregrid.cli demo      # run the 6 acceptance scenarios headless
 python -m caregrid.cli eval      # run evaluation scorecard
 pytest -q                       # tests (mock LLM)
 streamlit run app/Home.py
+python -m caregrid.cli serve    # web UI (web/) + HTTP API on http://127.0.0.1:8000
+python -m caregrid.cli check    # the midnight checklist, headless (PASS/FAIL per item)
 ```
 
 ## How to work

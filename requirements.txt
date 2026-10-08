@@ -12,3 +12,4 @@ pytest==9.1.1
 openai==3.26.1
 fastapi==0.143.0
 uvicorn==0.54.0
+# optional, for tests/test_web_e2e.py (uses the installed Chrome; the test skips without it): playwright==1.63.0

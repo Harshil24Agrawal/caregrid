@@ -1,0 +1,419 @@
+
+@layer base {
+  html, body { margin: 0; padding: 0; }
+  body { 
+    overscroll-behavior: none;
+    background: linear-gradient(135deg, #f4f7fe 0%, #ebf1fd 40%, #f6f8fe 100%) !important;
+    min-height: 100vh;
+  }
+}
+
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.55); }
+
+/* --- 1. CLEAN TYPOGRAPHY, ALIGNMENT & OVERFLOW PROTECTION --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Natural word wrap for paragraphs and descriptive text only */
+body, main, p, article, .text-description {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: normal;
+}
+
+/* Protect headings, numbers, badges, tags, buttons from wrapping mid-word or breaking digits */
+h1, h2, h3, h4, h5, h6,
+[class*="headline-"],
+[class*="text-headline-"],
+.font-numeric-score,
+[class*="label-badge"],
+[class*="font-label-badge"],
+.badge,
+.tag,
+.pill,
+button,
+a.btn,
+.btn {
+  word-break: keep-all !important;
+}
+
+/* Numbers, scores, ratios, metrics must NEVER split digits or slashes across lines */
+.font-headline-xl,
+.font-headline-lg,
+.font-headline-md,
+[class*="numeric-score"],
+[class*="label-numeric-score"],
+[id*="score"],
+.metric-value,
+.score-badge {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  font-variant-numeric: tabular-nums;
+  display: inline-block !important;
+  line-height: 1.25 !important;
+}
+
+/* Badges and chips MUST stay together on one line */
+.badge,
+.tag,
+.pill,
+span.rounded[class*="bg-"],
+span.px-space-xs,
+span.px-1\.5,
+span.px-2 {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+/* Labels and section headers: keep text intact without breaking words, honor block display */
+[class*="label-badge"],
+[class*="font-label-badge"] {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+span.block,
+label.block,
+.block {
+  display: block !important;
+}
+
+/* Textareas, code blocks, masked output, and descriptions must ALWAYS wrap naturally */
+textarea,
+pre,
+[class*="label-code"],
+[class*="font-label-code"] {
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+textarea {
+  white-space: pre-wrap !important;
+}
+
+/* Badges, tags, IDs must never break mid-word */
+.badge,
+.tag,
+.pill,
+.badge-code,
+code.badge-code {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+/* Action buttons and links must stay intact */
+button,
+a.action-link,
+header a {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+/* Table containment and column alignment */
+.table-responsive,
+.overflow-x-auto {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+table th {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  font-size: 0.6875rem !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  font-weight: 700 !important;
+  vertical-align: middle !important;
+}
+
+table td {
+  vertical-align: middle !important;
+  word-break: normal !important;
+}
+
+/* Table cells with code IDs, status pills, or action links */
+table td [class*="label-code"],
+table td [class*="font-label-code"],
+table td [class*="label-badge"],
+table td [class*="font-label-badge"],
+table td a,
+table td button,
+table td .material-symbols-outlined {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+/* Long cryptographic hashes (SHA-256 in audit logs) wrap safely */
+.audit-hash,
+.sha256-hash,
+.break-hash,
+[data-hash] {
+  overflow-wrap: anywhere !important;
+  word-break: break-all !important;
+}
+
+/* --- 2. GLASS CARD THEME --- */
+.bg-surface-container-lowest,
+.bg-surface-container-low,
+.slate-card,
+div[class*="bg-surface-container-lowest"],
+div[class*="bg-surface-container-low"] {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.05), 0 2px 8px -2px rgba(15, 23, 42, 0.03) !important;
+}
+
+.bg-surface-container-lowest:hover {
+  box-shadow: 0 14px 38px -4px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04) !important;
+  border-color: rgba(255, 255, 255, 1) !important;
+}
+
+/* Glass tables */
+table thead tr {
+  background: rgba(241, 245, 249, 0.75) !important;
+  backdrop-filter: blur(8px) !important;
+}
+table tbody tr {
+  transition: background-color 0.15s ease;
+}
+table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.95) !important;
+}
+
+/* --- 3. DYNAMIC RESPONSIVE LAYOUT & SIDEBAR VARIABLES --- */
+:root {
+  --sidebar-w: 16rem;
+  --header-h: 4rem;
+}
+
+body.sidebar-collapsed {
+  --sidebar-w: 4.75rem;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --sidebar-w: 0rem;
+  }
+  body:not(.sidebar-collapsed) {
+    --sidebar-w: 16rem;
+  }
+  body.sidebar-collapsed {
+    --sidebar-w: 0rem;
+  }
+}
+
+aside#app-sidebar {
+  width: var(--sidebar-w) !important;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: #ffffff !important;
+  border-right: 1px solid rgba(226, 232, 240, 0.95) !important;
+  box-shadow: 4px 0 24px 0 rgba(15, 23, 42, 0.04) !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+  z-index: 50 !important;
+}
+
+@media (max-width: 768px) {
+  body.sidebar-collapsed aside#app-sidebar {
+    transform: translateX(-100%) !important;
+    width: 16rem !important;
+  }
+}
+
+header#app-header {
+  left: var(--sidebar-w) !important;
+  right: 0 !important;
+  height: var(--header-h) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04) !important;
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+div#main-wrapper {
+  padding-left: var(--sidebar-w) !important;
+  transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  min-height: 100vh;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+main {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-top: calc(var(--header-h) + 1.75rem) !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+  padding-bottom: 5rem !important;
+  transition: padding 0.3s ease !important;
+}
+
+@media (min-width: 1440px) {
+  main {
+    padding-left: 3.25rem !important;
+    padding-right: 3.25rem !important;
+  }
+}
+
+@media (max-width: 640px) {
+  main {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+/* --- 4. BOLD BLACK BURGER BUTTON --- */
+#sidebar-toggle-btn {
+  width: 2.35rem !important;
+  height: 2.35rem !important;
+  min-width: 2.35rem !important;
+  min-height: 2.35rem !important;
+  background: #ffffff !important;
+  border: 2px solid #000000 !important;
+  border-radius: 0.5rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15) !important;
+  padding: 0 !important;
+  transition: all 0.2s ease !important;
+}
+#sidebar-toggle-btn:hover {
+  background: #f1f5f9 !important;
+  transform: scale(1.05);
+}
+#sidebar-toggle-btn:active {
+  background: #e2e8f0 !important;
+}
+
+#sidebar-toggle-btn svg {
+  width: 1.35rem !important;
+  height: 1.35rem !important;
+  display: block !important;
+}
+#sidebar-toggle-btn svg line {
+  stroke: #000000 !important;
+  stroke-width: 2.8 !important;
+  stroke-linecap: round !important;
+}
+
+/* --- 5. NAVBAR STYLING (TEXT STRICTLY CONFINED) --- */
+aside#app-sidebar nav a.nav-item {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0.65rem 0.85rem !important;
+  border-radius: 0.75rem !important;
+  margin-bottom: 0.35rem !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  color: #475569 !important;
+}
+
+aside#app-sidebar nav a.nav-item:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+aside#app-sidebar nav a.nav-item.active-nav {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.25) !important;
+}
+
+aside#app-sidebar nav a.nav-item.active-nav span {
+  color: #ffffff !important;
+}
+
+/* Collapsed visual states */
+body.sidebar-collapsed .sidebar-text,
+body.sidebar-collapsed .sidebar-details,
+body.sidebar-collapsed .pipeline-box,
+body.sidebar-collapsed .brand-full {
+  display: none !important;
+}
+
+body.sidebar-collapsed .brand-mini {
+  display: flex !important;
+}
+body:not(.sidebar-collapsed) .brand-mini {
+  display: none !important;
+}
+
+body.sidebar-collapsed aside#app-sidebar nav a.nav-item {
+  justify-content: center !important;
+  padding: 0.75rem 0.5rem !important;
+}
+
+body.sidebar-collapsed aside#app-sidebar .acting-as-box {
+  padding: 0.45rem !important;
+  justify-content: center !important;
+}
+body.sidebar-collapsed aside#app-sidebar .acting-as-box .unfold-icon {
+  display: none !important;
+}
+
+body.sidebar-collapsed aside#app-sidebar .reset-btn {
+  justify-content: center !important;
+  padding: 0.6rem !important;
+}
+
+/* --- 6. SPACING & PADDING TOKENS --- */
+.p-space-lg { padding: 1.5rem !important; }
+.p-space-md { padding: 1.1rem 1.15rem !important; }
+.p-space-sm { padding: 0.75rem 0.9rem !important; }
+.p-space-xs { padding: 0.4rem 0.6rem !important; }
+
+.gap-space-lg { gap: 1.5rem !important; }
+.gap-space-md { gap: 1rem !important; }
+.gap-space-sm { gap: 0.75rem !important; }
+.gap-space-xs { gap: 0.5rem !important; }
+.gap-1 { gap: 0.5rem !important; }
+
+.mb-space-lg { margin-bottom: 1.75rem !important; }
+.mb-space-md { margin-bottom: 1.25rem !important; }
+.mb-space-sm { margin-bottom: 0.85rem !important; }
+
+/* Table cells */
+table th {
+  padding-top: 0.85rem !important;
+  padding-bottom: 0.85rem !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+table td {
+  padding-top: 0.95rem !important;
+  padding-bottom: 0.95rem !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+
+/* Inputs & buttons */
+input[type="text"], input[type="search"], textarea, select {
+  padding: 0.7rem 1rem !important;
+  border-radius: 0.65rem !important;
+}
+p { line-height: 1.65 !important; }
