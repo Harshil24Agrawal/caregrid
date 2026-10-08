@@ -52,9 +52,13 @@ class Scenario:
         return all(ok for _, ok in self.checks)
 
 
+_VOLATILE = re.compile(r"\d{4}-\d\d-\d\dT[\d:.]+|AUD-[0-9a-f]+")
+
+
 def _stored_blob(store: Store, case: Case) -> str:
     audit = " ".join(e.model_dump_json() for e in store.list_audit(case.id))
-    return json.dumps(json.loads(case.model_dump_json()), ensure_ascii=False) + " " + audit
+    text = json.dumps(json.loads(case.model_dump_json()), ensure_ascii=False) + " " + audit
+    return _VOLATILE.sub("", text)          # timestamps / random audit ids can contain any digit run and would fake a "leak"
 
 
 def _has_event(store: Store, case: Case, name: str) -> bool:

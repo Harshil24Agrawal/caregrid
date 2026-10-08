@@ -55,9 +55,13 @@ def new_store(paths, path=":memory:"):
     return store
 
 
+VOLATILE = re.compile(r"\d{4}-\d\d-\d\dT[\d:.]+|AUD-[0-9a-f]+")
+
+
 def blob(store, case_id):
     c = store.get_case(case_id)
-    return c.model_dump_json() + " " + " ".join(e.model_dump_json() for e in store.list_audit(case_id))
+    text = c.model_dump_json() + " " + " ".join(e.model_dump_json() for e in store.list_audit(case_id))
+    return VOLATILE.sub("", text)        # timestamps (microseconds) and random audit ids can contain any digit run, e.g. "2031"
 
 
 # ================================================================== hostile LLM
