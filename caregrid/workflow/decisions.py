@@ -15,7 +15,7 @@ from caregrid.store import Store
 from caregrid.workflow.audit import log
 from caregrid.workflow.comms import send_communications, validate_contacts
 from caregrid.workflow.precedents import capture_precedent
-from caregrid.workflow.prs import draft_pr, target_policy
+from caregrid.workflow.prs import clean_meta, draft_pr, target_policy
 from caregrid.workflow.routing import set_state
 from caregrid.workflow.trust import record_review
 
@@ -90,7 +90,7 @@ def submit_decision(d: ReviewDecision, store: Store, brain: Brain, llm: LLM) -> 
         edited=edited is not None, edit_check=edit_issues, save_as_precedent=d.save_as_precedent, channels=[c.value for c in d.channels],
         propose_pr=d.propose_pr)
     if d.propose_pr:
-        log(store, "pr_requested", reviewer, case.id, target_page=target_policy(case))
+        log(store, "pr_requested", reviewer, case.id, target_page=target_policy(case, clean_meta(d.meta_changes)))
         pr = draft_pr(case, d, brain, llm, store)
         if pr is None:
             log(store, "pr_skipped", reviewer, case.id, reason="no cited current policy or nothing to change")

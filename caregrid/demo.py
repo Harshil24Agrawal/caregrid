@@ -22,6 +22,7 @@ from caregrid.reasoning.pipeline import run
 from caregrid.seed import load_users, seed_demo_case, seed_trust
 from caregrid.store import Store
 from caregrid.workflow.decisions import submit_decision
+from caregrid.workflow.prs import decide_pr
 
 RAW_SECRETS = {
     "S2": ["Ramesh", "Iyer", "Lake Road", "123456789"],
@@ -206,6 +207,34 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
          trust.consecutive_agreements == 1 and trust.total_reviews == 1 and trust.level == 0),
         ("stays human (trust level 0), IN_REVIEW", c.routing == "human" and c.trust_level == 0 and c.state == State.IN_REVIEW),
         ("no PII in stored text", not any(s in blob for s in RAW_SECRETS["S6b"]))])
+    # ---- S7: the knowledge loop - Kiran proposes retiring the contradicting policy, Meera approves, the contradiction disappears
+    kiran, meera = users["U7"], users["U5"]
+    conflict_case = go(S3, asha)
+    contradiction = lambda: [f for f in lint(brain) if f.code == "CONTRADICTION" and "KA-32" in f.page_ids]   # noqa: E731
+    had_contradiction = bool(contradiction())
+    decided = submit_decision(
+        ReviewDecision(case_id=conflict_case.id, reviewer=kiran, action=ReviewAction.APPROVE, channels=[], save_as_precedent=False,
+                       propose_pr=True, note="KA-32 is superseded by KA-31; retire it.",
+                       meta_changes={"retire": True, "target_page": "KA-32"}), store, brain, llm)
+    prs = [x for x in store.list_prs("open") if x.target_page_id == "KA-32" and x.author_id == kiran.id]
+    pr = prs[-1] if prs else None
+    try:
+        decide_pr(pr.id, True, kiran, store, brain) if pr else None
+        kiran_blocked = False
+    except PermissionError:
+        kiran_blocked = True
+    approved_pr = decide_pr(pr.id, True, meera, store, brain) if pr else None
+    c = go(S3, asha)
+    add("S7", "Knowledge PR: retire the contradicting policy", c, [
+        ("before: lint reports the KA-31 / KA-32 CONTRADICTION", had_contradiction),
+        ("Kiran's decision opens a PR on KA-32 (retire)", pr is not None and pr.meta_changes.get("retire") is True and decided.state != State.IN_REVIEW),
+        ("Kiran (team specialist) cannot decide the PR", kiran_blocked),
+        ("Meera approves: PR approved, KA-32 retired", approved_pr is not None and approved_pr.status == "approved" and brain.get("KA-32") is None),
+        ("audit pr_opened + pr_decided", _has_event(store, conflict_case, "pr_opened")
+         and any(e.event == "pr_decided" and e.details.get("retired") for e in store.list_audit(None))),
+        ("lint: CONTRADICTION gone", not contradiction()),
+        ("new portal request: no conflict, no_conflict == 10", c.rules.conflicts == [] and c.confidence.breakdown.get("no_conflict") == 10),
+        ("no POLICY_CONFLICT reason", ReasonCode.POLICY_CONFLICT not in c.reason_codes)])
     return out
 
 

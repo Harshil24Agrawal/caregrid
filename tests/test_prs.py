@@ -125,3 +125,14 @@ def test_structured_rule_and_retire(env):
     env.decide(case2, env.vikram, propose_pr=True, note="Obsolete.", meta_changes={"retire": True})
     decide_pr(env.store.list_prs("open")[0].id, True, env.meera, env.store, env.brain)
     assert env.brain.get(pid) is None and all(p.status != PageStatus.ACTIVE for p in env.brain.precedents() if p.policy_id == pid)
+
+
+def test_target_page_must_be_one_the_case_cited(env):
+    from caregrid.workflow.prs import cited_policies
+    case = env.run("A clinic staff member is locked out of the provider portal, email staff@clinic.example, provider NPI 1234567890. Can we reset it?")
+    cited = cited_policies(case)
+    assert "KA-32" in cited or "KA-31" in cited
+    pr = draft_pr(case, decision(env, case, note="x", meta_changes={"retire": True, "target_page": cited[-1]}), env.brain, LLM)
+    assert pr.target_page_id == cited[-1]
+    pr = draft_pr(case, decision(env, case, note="x", meta_changes={"retire": True, "target_page": "KA-02"}), env.brain, LLM)
+    assert pr.target_page_id == cited[0]                      # not cited by this case -> ignored, default target

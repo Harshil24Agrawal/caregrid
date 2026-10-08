@@ -21,16 +21,22 @@ from caregrid.workflow.audit import log
 
 MAX_GROWTH = 1500          # a minimal edit may add at most this many characters
 MIN_KEEP = 0.5             # ... and may not delete more than half of the article
-META_KEYS = {"rule_key", "rule_value", "retire"}
+META_KEYS = {"rule_key", "rule_value", "retire", "target_page"}
 
 
 class PRStateError(ValueError):
     """The PR is not open, or the page it was written against has moved on."""
 
 
-def target_policy(case: Case) -> str | None:
-    """The policy page the case's answer cited (first one), or None."""
-    return next((c.page_id for c in (case.proposal.citations if case.proposal else []) if c.page_type == PageType.POLICY), None)
+def cited_policies(case: Case) -> list[str]:
+    return [c.page_id for c in (case.proposal.citations if case.proposal else []) if c.page_type == PageType.POLICY]
+
+
+def target_policy(case: Case, meta: dict | None = None) -> str | None:
+    """The policy page a PR edits: the one the reviewer names in meta_changes["target_page"] if the case cited it, else the first cited."""
+    cited = cited_policies(case)
+    named = (meta or {}).get("target_page")
+    return named if named in cited else (cited[0] if cited else None)
 
 
 def clean_meta(meta: dict) -> dict:
@@ -42,6 +48,9 @@ def clean_meta(meta: dict) -> dict:
         if k == "retire":
             if v is True:
                 out[k] = True
+        elif k == "target_page":
+            if isinstance(v, str) and v.strip():
+                out[k] = v.strip()[:40]
         elif isinstance(v, (str, int, float)) and not isinstance(v, bool):
             out[k] = anonymize(str(v))[0]
     if ("rule_key" in out) != ("rule_value" in out):
@@ -84,14 +93,14 @@ def unified_diff(old: str, new: str, page_id: str) -> str:
 
 def draft_pr(case: Case, d: ReviewDecision, brain: Brain, llm: LLM, store: Store | None = None) -> KnowledgePR | None:
     """Open a KnowledgePR for the policy the case cited. None when there is nothing to edit (no cited current policy, or no change)."""
-    page_id = target_policy(case)
+    meta = clean_meta(d.meta_changes)
+    page_id = target_policy(case, meta)
     page = brain.get(page_id) if page_id else None
     if page is None:
         return None
     note = anonymize(d.note)[0].strip() if d.note else ""
-    meta = clean_meta(d.meta_changes)
     body, reason, _model = _draft_body(page.body, page.id, page.version, case, d, note, llm)
-    if body == page.body and not meta:
+    if body == page.body and not (meta.keys() - {"target_page"}):
         return None
     pr = KnowledgePR(id=f"PR-{uuid.uuid4().hex[:6]}", target_page_id=page.id, base_version=page.version, proposed_body=body,
                      diff=unified_diff(page.body, body, page.id), reason=reason, author_id=d.reviewer.id, status="open",
