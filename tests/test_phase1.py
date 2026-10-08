@@ -146,7 +146,7 @@ def test_seed_trust_eval_billing(built):
     inv = next(b for b in bill if b["invoice_id"] == "INV-1024")
     assert (inv["case_id"], inv["amount_inr"], inv["status"], inv["due_date"]) == ("CASE-1024", "62500", "pending_approval", "2026-10-20")
     ev = list(csv.DictReader(open(built["eval"] / "requests_eval.csv", encoding="utf-8", newline="")))
-    assert 55 <= len(ev) <= 65
+    assert 55 <= len(ev) <= 70
     assert sum(r["must_refuse"] == "true" for r in ev) >= 18
     assert any(r["expected_team"] == "TEAM-CLINICAL" for r in ev) and any("ignore" in r["text"].lower() for r in ev)
     logs = (d / "system_logs.csv").read_text(encoding="utf-8")

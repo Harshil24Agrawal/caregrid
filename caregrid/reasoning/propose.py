@@ -59,7 +59,12 @@ def build_context(ret: RetrievalResult, rules: RuleResult | None = None) -> list
     shown = [s for s in ret.policies if s.page.type == PageType.POLICY and s.page.status == PageStatus.APPROVED
              and (s.relevance >= config.POLICY_MIN_SCORE or re.search(rf"\b{re.escape(s.page.id)}\b", in_conflict))]
     items = [CtxItem(s.page.id, s.page.version, PageType.POLICY, s.page.title, s.page.body) for s in shown]
-    if ret.workflow:
+    how = ret.howto_workflow
+    if how is not None:                    # a how-to answer is the matched workflow plus the policies it links to (approved, current)
+        have = {i.id for i in items}
+        items += [CtxItem(p.id, p.version, PageType.POLICY, p.title, p.body) for p in ret.howto_policies if p.id not in have]
+        items.append(CtxItem(how.id, how.version, PageType.WORKFLOW, how.title, how.body))
+    elif ret.workflow:
         w = ret.workflow
         items.append(CtxItem(w.id, w.version, PageType.WORKFLOW, w.title, w.body))
     if ret.team:
@@ -117,6 +122,16 @@ def not_enough_evidence_text(team: str | None) -> str:
             f"2. It has been passed to {where} so a person can review it.")
 
 
+def howto_text(wf) -> tuple[str, list[str]]:
+    """The workflow's steps as a numbered list plus its required fields, built by CODE from the page meta: no model may alter a step."""
+    steps = [str(s).strip() for s in wf.meta.get("steps", []) if str(s).strip()]
+    lines = [f"{i}. {s}" for i, s in enumerate(steps, 1)]
+    needed = [label(f) for f in wf.meta.get("required_fields", [])]
+    if needed:
+        lines.append("You will need: " + ", ".join(needed) + ".")
+    return "\n".join(lines), [f"See {wf.id} v{wf.version} for the full workflow."]
+
+
 def refusal_text(rules: RuleResult) -> str:
     team = rules.route_team or "the right team"
     codes = set(rules.reason_codes)
@@ -151,7 +166,9 @@ def deterministic_wording(decision: DecisionCode, cls: Classification, ret: Retr
     where = team or "the right team"
     policies = [c for c in ctx if c.type == PageType.POLICY]
     steps: list[str] = []
-    if decision == DecisionCode.ANSWER_FROM_POLICY and policies:
+    if decision == DecisionCode.ANSWER_FROM_POLICY and ret.howto_workflow is not None:
+        answer, steps = howto_text(ret.howto_workflow)
+    elif decision == DecisionCode.ANSWER_FROM_POLICY and policies:
         top = policies[0]
         lines = _sentences(top.body, 2)
         answer = "\n".join(f"{i}. {s}" for i, s in enumerate(lines, 1)) or f"1. See {top.id} for the guidance."
@@ -241,6 +258,10 @@ def assemble_citations(ctx: list[CtxItem], ret: RetrievalResult, decision: Decis
     policies = [c for c in ctx if c.type == PageType.POLICY]
     linked = {s.page.id for s in ret.policies if s.linked}
     # what actually supports the answer: the workflow-linked policies, or (when none is linked) the single best search hit
+    if ret.howto_workflow is not None:                  # how-to: the workflow and every policy it links to (the answer is that workflow's steps)
+        chosen = [ret.howto_workflow.id] + ([p.id for p in ret.howto_policies] or [c.id for c in policies[:1]])   # no linked policy: the best relevant one
+        return [Citation(page_id=c.id, version=c.version, page_type=c.type, title=c.title) for cid in dict.fromkeys(chosen)
+                if (c := by_id.get(cid)) is not None]
     chosen: list[str] = [c.id for c in (([c for c in policies if c.id in linked]) or policies[:1])]
     chosen += [c.id for c in ctx if c.type == PageType.WORKFLOW]
     matched = [s.precedent.id for s in similar_precedents(ret)
@@ -276,7 +297,9 @@ def propose(masked_text: str, cls: Classification, ret: RetrievalResult, rules: 
     llm_ids: list[str] = []
     model = DETERMINISTIC
 
-    if decision != DecisionCode.REFUSE_AND_ROUTE:           # refusals are never worded by a model
+    if ret.howto_workflow is not None and decision == DecisionCode.ANSWER_FROM_POLICY:
+        summary = f"How-to question answered from {ret.howto_workflow.id} v{ret.howto_workflow.version}: its steps, listed by code."
+    elif decision != DecisionCode.REFUSE_AND_ROUTE:         # refusals are never worded by a model; neither are how-to steps
         tier = choose_tier(rules, cls, ctx, explain)
         user = (f"REQUEST (masked):\n{masked_text}\n\nCLASSIFICATION:\n"
                 f"{json.dumps({'request_type': cls.request_type, 'extracted_fields': cls.extracted_fields, 'urgency': cls.urgency, 'sentiment': cls.sentiment})}\n\n"

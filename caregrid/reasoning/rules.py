@@ -200,6 +200,8 @@ def decide_code(rules: RuleResult, ret: RetrievalResult, cls: Classification) ->
         return DecisionCode.REQUEST_MISSING_INFO
     if rules.risk in (Risk.HIGH, Risk.CRITICAL):
         return DecisionCode.ESCALATE_SENIOR
+    if ret.howto_workflow is not None:               # a how-to question is answered from the workflow's steps and its linked policies
+        return DecisionCode.ANSWER_FROM_POLICY
     has_policy = bool(relevant_policies(ret))
     if cls.request_type == "general_policy_question" and not has_policy:
         return DecisionCode.NOT_ENOUGH_EVIDENCE      # an answer needs a cited policy (cite-or-abstain), whatever the precedents say

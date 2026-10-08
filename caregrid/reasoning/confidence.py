@@ -27,6 +27,8 @@ def similar_precedents(ret: RetrievalResult) -> list[ScoredPrecedent]:
 
 
 def policy_component(ret: RetrievalResult) -> int:
+    if ret.howto_workflow is not None:               # the workflow matched the question and its linked policies are cited
+        return 30
     pols = relevant_policies(ret)
     if any(s.linked for s in pols):
         return 30

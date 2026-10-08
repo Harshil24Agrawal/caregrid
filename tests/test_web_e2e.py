@@ -360,3 +360,18 @@ def test_case_page_shows_a_summary_card_and_lists_a_summary_column(web):
     web.go("/index.html", "table.compact tr.click")
     assert "SUMMARY" in text(p, "table.compact thead").upper()
     assert "EVALUATION" not in text(p).upper() and "GAP RADAR" not in text(p).upper()
+
+
+def test_case_page_shows_how_this_is_handled_and_a_howto_answer(web):
+    p = web.submit("How do I change a provider's billing address?")
+    assert "WF-03" in text(p, "#run")
+    web.as_user("U4")
+    p = web.go("/case.html?case=CASE-1024", "#guidance")
+    g = text(p, "#guidance").upper()
+    assert "HOW THIS IS HANDLED" in g and "WF-09" in g and "REQUIRED DETAILS" in g
+    assert p.locator("#guidance .step.done").count() >= 1 and p.locator("#guidance .step.current").count() == 1
+    web.as_user("U1")
+    cid = web.submit("How do I change a provider's billing address?")
+    cid = case_id_of(cid)
+    p = web.go("/case.html?case=" + cid, "#guidance")
+    assert "HOW THIS IS DONE" in text(p, "#guidance").upper() and "YOU WILL NEED" in text(p, "#guidance").upper()

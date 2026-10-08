@@ -81,6 +81,22 @@
       row('Sources', p && p.citations.length ? p.citations.map(CG.citationChip).join('') : '<span class="muted">No verified source: sent to a person.</span>') + row('Next step', CG.esc(nextStep())) + '</div>' + extra;
   }
 
+  // HOW THIS IS HANDLED: the workflow's steps (from the page, never a model) with progress, and the required fields
+  var STEP_MARK = { done: ['✓', 'Done'], current: ['●', 'Now'], next: ['○', 'Next'], stopped: ['✕', 'Not done'], info: ['', ''] };
+  function guidanceHtml() {
+    var g = c.guidance;
+    if (!g) return '';
+    var steps = g.steps.map(function (s) {
+      var m = STEP_MARK[s.status] || STEP_MARK.next;
+      return '<li class="step ' + s.status + '"><span class="mark" aria-hidden="true">' + (g.mode === 'info' ? s.n + '.' : m[0]) + '</span><span>' + CG.esc(s.text) + '</span>' + (m[1] ? '<span class="sr-only"> (' + m[1] + ')</span>' : '') + '</li>';
+    }).join('');
+    var fields = g.fields.length ? '<div class="small muted" style="margin:10px 0 4px">' + (g.mode === 'info' ? 'You will need' : 'Required details') + '</div>' + g.fields.map(function (f) {
+      var ok = f.status === 'ok', info = f.status === 'info';
+      return '<span class="chip ' + (info ? 'grey' : ok ? 'green' : 'red') + '">' + (info ? '' : ok ? '✓ ' : '✗ ') + CG.esc(f.label) + (f.status === 'missing' ? ' (missing)' : f.status === 'invalid' ? ' (invalid)' : '') + '</span>';
+    }).join('') : '';
+    return '<div class="card" id="guidance"><div class="card-title"><h2>' + (g.mode === 'info' ? 'How this is done' : 'How this is handled') + '</h2><a class="chip" href="' + CG.pageLink(g.workflow.id, g.workflow.version) + '" title="' + CG.esc(g.workflow.title + ' · ' + g.workflow.location) + '">' + CG.esc(g.cite) + '</a></div><ol class="stepper">' + steps + '</ol>' + fields + '</div>';
+  }
+
   function decidePanel() {
     var a = c.actions, done = '';
     if (lastResult) {
@@ -244,7 +260,7 @@
       CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old · requested by ' + CG.esc(c.requester.name) + '</span></div></div>' +
       '<div class="card summary-card" id="summary"><h2>Summary</h2><p>' + CG.esc(c.summary) + '</p></div>' +
       '<div class="card" style="margin-bottom:16px">' + CG.pipeline(lit, -1, null, tiers) + '</div>' +
-      '<div class="grid g-case"><div class="card">' + rowsHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
+      '<div class="grid g-case"><div class="stack"><div class="card">' + rowsHtml() + '</div>' + guidanceHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
       '<div class="tabs" role="tablist">' + [['evidence', 'Evidence'], ['graph', 'Graph'], ['audit', 'Audit timeline'], ['messages', 'Messages']].map(function (t) {
         return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('') + '</div><div class="card" id="tab-body"></div>';
     CG.$$('.tab', el).forEach(function (b) { b.onclick = function () { tab = b.dataset.t; draw(); }; });

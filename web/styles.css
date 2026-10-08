@@ -117,3 +117,8 @@ pre.diff div { padding: 0 10px; white-space: pre-wrap; word-break: break-word; }
 table.compact { font-size: 13px; } table.compact th, table.compact td { padding: 9px 7px; }
 
 .summary-card { margin-bottom: 16px; border-left: 4px solid var(--blue, #1d5fd1); } .summary-card h2 { font-size: 15px; margin-bottom: 4px; } .summary-card p { margin: 0; font-size: 15px; line-height: 1.5; }
+
+.stepper { list-style: none; margin: 4px 0 0; padding: 0; } .step { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; } .step:last-child { border-bottom: 0; }
+.step .mark { flex: 0 0 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; border: 1px solid var(--line); color: var(--faint); background: #fff; }
+.step.done .mark { background: var(--green-bg); border-color: #b6e2cb; color: var(--green); } .step.current .mark { background: var(--blue-bg); border-color: #b8d0f7; color: var(--blue-d); } .step.current { font-weight: 600; }
+.step.next { color: var(--muted); } .step.stopped .mark { background: var(--red-bg); border-color: #f4bdb8; color: var(--red); } .step.info .mark { border: 0; background: none; color: var(--muted); font-weight: 600; flex-basis: 24px; }

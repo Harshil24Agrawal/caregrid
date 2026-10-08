@@ -448,10 +448,10 @@ def _eval_rows() -> list[list]:
             "d": "TEAM-SENIOR-OPS", "c": "TEAM-CLAIMS", "co": "TEAM-COMPLIANCE", "u": "TEAM-OPS-TRIAGE"}
     R = []  # (text, requester, type_key, route, team_override, reasons, missing, refuse)
 
-    def r(text, t, route="human", reasons="", missing="", refuse=False, who="U1", team=None):
+    def r(text, t, route="human", reasons="", missing="", refuse=False, who="U1", team=None, decision="", cite=""):
         if "ACCESS_DENIED" in reasons:  # blocked at the guard: never classified, routed to Compliance & Privacy
             t, team = "u", "TEAM-COMPLIANCE"
-        R.append([text, who, T[t], route, team or TEAM[t], reasons, missing, str(refuse).lower()])
+        R.append([text, who, T[t], route, team or TEAM[t], reasons, missing, str(refuse).lower(), decision, cite])
 
     for q in ["Which documents can a provider send as proof for a record update?", "How do I submit a new operations request?",
               "What is the policy on supporting documents for billing changes?", "Where can I find the forms for provider updates?",
@@ -532,6 +532,10 @@ def _eval_rows() -> list[list]:
     r("How do I file my income tax?", "g", reasons="POLICY_GAP")
     r("What is the policy on telehealth provider credentialing?", "g", reasons="POLICY_GAP")
     r("Can you explain our parking rules?", "g", reasons="POLICY_GAP")
+    # how-to questions about a process: answered automatically with the workflow's steps (built by code), citing the workflow
+    r("How do I change a provider's billing address?", "g", route="auto", decision="answer_from_policy", cite="WF-03")
+    r("How do I check the status of a prior authorization?", "g", route="auto", decision="answer_from_policy", cite="WF-08")
+    r("How do I update a provider name after marriage?", "g", route="auto", decision="answer_from_policy", cite="WF-05")
     return [[f"EV-{i + 1:02d}", *row] for i, row in enumerate(R)]
 
 
@@ -584,5 +588,5 @@ def generate(out_dir: Path, seed: int = 42, eval_dir: Path | None = None) -> Non
     _json(out_dir / "trust_seed.json", trust)
 
     ev_cols = ["id", "text", "requester_id", "expected_type", "expected_route", "expected_team", "expected_reasons",
-               "expected_missing", "must_refuse"]
+               "expected_missing", "must_refuse", "expected_decision", "expected_cite"]
     _csv((Path(eval_dir) if eval_dir else out_dir / "eval") / "requests_eval.csv", ev_cols, _eval_rows())

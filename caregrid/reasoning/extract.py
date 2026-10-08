@@ -51,6 +51,18 @@ def _is_info_question(text: str) -> bool:
     return not (CLINICAL.search(text) or SENSITIVE.search(text))
 
 
+_HOWTO = re.compile(
+    r"(?i)^\W*(?:how (?:do|can|should|would|could) (?:i|we|you|one)\b|how to\b|what (?:are|is) the (?:steps?|process|procedure)\b|"
+    r"what(?:'s| is) the (?:way|process|procedure) (?:to|for)\b|steps (?:to|for)\b|walk me through\b|(?:can|could) you (?:tell|show) me how\b)")
+
+
+def is_howto(masked_text: str) -> bool:
+    """A question about HOW a process is done ("how do I change a provider's billing address?"), not a request to do it. It must carry no
+    concrete data (a masked id, e-mail, address, name, date or amount): with data it is a real request and keeps its own type."""
+    t = masked_text.strip()
+    return bool(_HOWTO.search(t)) and "[" not in t and not extract_fields(t) and not re.search(r"\d", t)
+
+
 def keyword_type(masked_text: str) -> tuple[str, bool]:
     """-> (request_type | "unknown", hit)"""
     for rtype, rx in TYPE_RULES:

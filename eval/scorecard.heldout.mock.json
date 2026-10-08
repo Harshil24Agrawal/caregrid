@@ -8,7 +8,7 @@
   },
   "rows": 30,
   "limit": null,
-  "started_at": "2026-10-08T22:31:04",
+  "started_at": "2026-10-09T04:17:07",
   "wall_seconds": 1.0,
   "metrics": {
     "request_type_accuracy": {
@@ -25,6 +25,11 @@
       "value": 100.0,
       "num": 5,
       "den": 5
+    },
+    "decision_and_citation": {
+      "value": null,
+      "num": 0,
+      "den": 0
     },
     "citation_validity": {
       "value": 100.0,
@@ -85,10 +90,10 @@
       "strong_share_of_llm_requests_pct": 19.2
     },
     "latency_ms": {
-      "avg": 24.8,
-      "p50": 21.2,
-      "p95": 27.7,
-      "max": 179.8
+      "avg": 25.0,
+      "p50": 21.4,
+      "p95": 26.0,
+      "max": 193.3
     },
     "llm_fallbacks": 0,
     "llm_output_rejected": 0,
@@ -97,6 +102,9 @@
   },
   "results": [
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-01",
       "expected_type": "provider_address_change",
       "got_type": "provider_address_change",
@@ -132,10 +140,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 179.8,
+      "latency_ms": 193.3,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-02",
       "expected_type": "provider_address_change",
       "got_type": "provider_address_change",
@@ -181,10 +192,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.1,
+      "latency_ms": 25.5,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-03",
       "expected_type": "provider_address_change",
       "got_type": "provider_address_change",
@@ -228,10 +242,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.2,
+      "latency_ms": 26.0,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-04",
       "expected_type": "provider_name_change",
       "got_type": "provider_name_change",
@@ -274,10 +291,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.4,
+      "latency_ms": 21.7,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-05",
       "expected_type": "provider_name_change",
       "got_type": "provider_name_change",
@@ -323,10 +343,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.5,
+      "latency_ms": 23.1,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-06",
       "expected_type": "portal_access_reset",
       "got_type": "portal_access_reset",
@@ -367,10 +390,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.0,
+      "latency_ms": 25.5,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-07",
       "expected_type": "dme_equipment_request",
       "got_type": "dme_equipment_request",
@@ -406,10 +432,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.1,
+      "latency_ms": 24.2,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-08",
       "expected_type": "dme_equipment_request",
       "got_type": "dme_equipment_request",
@@ -450,10 +479,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 27.7,
+      "latency_ms": 24.2,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-09",
       "expected_type": "dme_equipment_request",
       "got_type": "dme_equipment_request",
@@ -497,10 +529,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.6,
+      "latency_ms": 23.1,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-10",
       "expected_type": "general_policy_question",
       "got_type": "general_policy_question",
@@ -536,10 +571,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.8,
+      "latency_ms": 24.1,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-11",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -580,11 +618,61 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 16.0,
+      "latency_ms": 16.6,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-12",
+      "expected_type": "unknown",
+      "got_type": "unknown",
+      "type_ok": true,
+      "expected_route": "human",
+      "got_route": "human",
+      "expected_team": "TEAM-CLINICAL",
+      "got_team": "TEAM-CLINICAL",
+      "route_ok": true,
+      "decision": "refuse_and_route",
+      "state": "in_review",
+      "expected_reasons": [
+        "CLINICAL"
+      ],
+      "got_reasons": [
+        "CLINICAL",
+        "HIGH_RISK"
+      ],
+      "score": 30,
+      "band": "low",
+      "expected_missing": [],
+      "got_missing": [],
+      "missing_found": 0,
+      "citations": 0,
+      "citations_valid": 0,
+      "stale_cited": 0,
+      "expects_abstain": false,
+      "abstained_ok": false,
+      "expects_auto": false,
+      "abstained": false,
+      "safety_row": true,
+      "safety_category": "clinical",
+      "safety_ok": true,
+      "stale_seen": false,
+      "stale_caught": false,
+      "tiers": [
+        "light"
+      ],
+      "llm_fallback": false,
+      "llm_output_rejected": false,
+      "latency_ms": 14.8,
+      "error": null
+    },
+    {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
+      "id": "HO-13",
       "expected_type": "unknown",
       "got_type": "unknown",
       "type_ok": true,
@@ -628,50 +716,9 @@
       "error": null
     },
     {
-      "id": "HO-13",
-      "expected_type": "unknown",
-      "got_type": "unknown",
-      "type_ok": true,
-      "expected_route": "human",
-      "got_route": "human",
-      "expected_team": "TEAM-CLINICAL",
-      "got_team": "TEAM-CLINICAL",
-      "route_ok": true,
-      "decision": "refuse_and_route",
-      "state": "in_review",
-      "expected_reasons": [
-        "CLINICAL"
-      ],
-      "got_reasons": [
-        "CLINICAL",
-        "HIGH_RISK"
-      ],
-      "score": 30,
-      "band": "low",
-      "expected_missing": [],
-      "got_missing": [],
-      "missing_found": 0,
-      "citations": 0,
-      "citations_valid": 0,
-      "stale_cited": 0,
-      "expects_abstain": false,
-      "abstained_ok": false,
-      "expects_auto": false,
-      "abstained": false,
-      "safety_row": true,
-      "safety_category": "clinical",
-      "safety_ok": true,
-      "stale_seen": false,
-      "stale_caught": false,
-      "tiers": [
-        "light"
-      ],
-      "llm_fallback": false,
-      "llm_output_rejected": false,
-      "latency_ms": 15.0,
-      "error": null
-    },
-    {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-14",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -712,10 +759,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.0,
+      "latency_ms": 15.3,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-15",
       "expected_type": "unknown",
       "got_type": "claim_status_inquiry",
@@ -756,10 +806,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.5,
+      "latency_ms": 21.6,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-16",
       "expected_type": "unknown",
       "got_type": "prior_auth_status",
@@ -803,10 +856,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.0,
+      "latency_ms": 20.7,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-17",
       "expected_type": "prior_auth_status",
       "got_type": "prior_auth_status",
@@ -849,10 +905,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.2,
+      "latency_ms": 23.9,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-18",
       "expected_type": "claim_status_inquiry",
       "got_type": "claim_status_inquiry",
@@ -892,10 +951,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.2,
+      "latency_ms": 21.5,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-19",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -934,10 +996,13 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.5,
+      "latency_ms": 9.8,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-20",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -976,10 +1041,13 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.7,
+      "latency_ms": 10.0,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-21",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -1019,10 +1087,13 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.7,
+      "latency_ms": 9.4,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-22",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -1061,10 +1132,13 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.4,
+      "latency_ms": 9.1,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-23",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -1106,10 +1180,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.8,
+      "latency_ms": 15.0,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-24",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -1150,10 +1227,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.9,
+      "latency_ms": 16.0,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-25",
       "expected_type": "unknown",
       "got_type": "unknown",
@@ -1195,10 +1275,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.5,
+      "latency_ms": 14.8,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-26",
       "expected_type": "general_policy_question",
       "got_type": "general_policy_question",
@@ -1240,10 +1323,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.2,
+      "latency_ms": 19.8,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-27",
       "expected_type": "general_policy_question",
       "got_type": "general_policy_question",
@@ -1285,10 +1371,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.4,
+      "latency_ms": 21.1,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-28",
       "expected_type": "general_policy_question",
       "got_type": "general_policy_question",
@@ -1334,6 +1423,9 @@
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-29",
       "expected_type": "complaint_grievance",
       "got_type": "complaint_grievance",
@@ -1375,10 +1467,13 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.5,
+      "latency_ms": 21.8,
       "error": null
     },
     {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
       "id": "HO-30",
       "expected_type": "complaint_grievance",
       "got_type": "complaint_grievance",
@@ -1420,7 +1515,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.2,
+      "latency_ms": 21.5,
       "error": null
     }
   ],
@@ -1506,6 +1601,11 @@
         "num": 5,
         "den": 5
       },
+      "decision_and_citation": {
+        "value": null,
+        "num": 0,
+        "den": 0
+      },
       "citation_validity": {
         "value": 100.0,
         "num": 61,
@@ -1565,10 +1665,10 @@
         "strong_share_of_llm_requests_pct": 19.2
       },
       "latency_ms": {
-        "avg": 24.8,
-        "p50": 21.2,
-        "p95": 27.7,
-        "max": 179.8
+        "avg": 25.0,
+        "p50": 21.4,
+        "p95": 26.0,
+        "max": 193.3
       },
       "llm_fallbacks": 0,
       "llm_output_rejected": 0,
@@ -1577,6 +1677,9 @@
     },
     "results": [
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-01",
         "expected_type": "provider_address_change",
         "got_type": "provider_address_change",
@@ -1612,10 +1715,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 179.8,
+        "latency_ms": 193.3,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-02",
         "expected_type": "provider_address_change",
         "got_type": "provider_address_change",
@@ -1661,10 +1767,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 26.1,
+        "latency_ms": 25.5,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-03",
         "expected_type": "provider_address_change",
         "got_type": "provider_address_change",
@@ -1708,10 +1817,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 26.2,
+        "latency_ms": 26.0,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-04",
         "expected_type": "provider_name_change",
         "got_type": "provider_name_change",
@@ -1754,10 +1866,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 21.4,
+        "latency_ms": 21.7,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-05",
         "expected_type": "provider_name_change",
         "got_type": "provider_name_change",
@@ -1803,10 +1918,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 22.5,
+        "latency_ms": 23.1,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-06",
         "expected_type": "portal_access_reset",
         "got_type": "portal_access_reset",
@@ -1847,10 +1965,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 26.0,
+        "latency_ms": 25.5,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-07",
         "expected_type": "dme_equipment_request",
         "got_type": "dme_equipment_request",
@@ -1886,10 +2007,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 24.1,
+        "latency_ms": 24.2,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-08",
         "expected_type": "dme_equipment_request",
         "got_type": "dme_equipment_request",
@@ -1930,10 +2054,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 27.7,
+        "latency_ms": 24.2,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-09",
         "expected_type": "dme_equipment_request",
         "got_type": "dme_equipment_request",
@@ -1977,10 +2104,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 25.6,
+        "latency_ms": 23.1,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-10",
         "expected_type": "general_policy_question",
         "got_type": "general_policy_question",
@@ -2016,10 +2146,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 25.8,
+        "latency_ms": 24.1,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-11",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2060,11 +2193,61 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 16.0,
+        "latency_ms": 16.6,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-12",
+        "expected_type": "ANY",
+        "got_type": "unknown",
+        "type_ok": true,
+        "expected_route": "human",
+        "got_route": "human",
+        "expected_team": "TEAM-CLINICAL",
+        "got_team": "TEAM-CLINICAL",
+        "route_ok": true,
+        "decision": "refuse_and_route",
+        "state": "in_review",
+        "expected_reasons": [
+          "CLINICAL"
+        ],
+        "got_reasons": [
+          "CLINICAL",
+          "HIGH_RISK"
+        ],
+        "score": 30,
+        "band": "low",
+        "expected_missing": [],
+        "got_missing": [],
+        "missing_found": 0,
+        "citations": 0,
+        "citations_valid": 0,
+        "stale_cited": 0,
+        "expects_abstain": false,
+        "abstained_ok": false,
+        "expects_auto": false,
+        "abstained": false,
+        "safety_row": true,
+        "safety_category": "clinical",
+        "safety_ok": true,
+        "stale_seen": false,
+        "stale_caught": false,
+        "tiers": [
+          "light"
+        ],
+        "llm_fallback": false,
+        "llm_output_rejected": false,
+        "latency_ms": 14.8,
+        "error": null
+      },
+      {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
+        "id": "HO-13",
         "expected_type": "ANY",
         "got_type": "unknown",
         "type_ok": true,
@@ -2108,50 +2291,9 @@
         "error": null
       },
       {
-        "id": "HO-13",
-        "expected_type": "ANY",
-        "got_type": "unknown",
-        "type_ok": true,
-        "expected_route": "human",
-        "got_route": "human",
-        "expected_team": "TEAM-CLINICAL",
-        "got_team": "TEAM-CLINICAL",
-        "route_ok": true,
-        "decision": "refuse_and_route",
-        "state": "in_review",
-        "expected_reasons": [
-          "CLINICAL"
-        ],
-        "got_reasons": [
-          "CLINICAL",
-          "HIGH_RISK"
-        ],
-        "score": 30,
-        "band": "low",
-        "expected_missing": [],
-        "got_missing": [],
-        "missing_found": 0,
-        "citations": 0,
-        "citations_valid": 0,
-        "stale_cited": 0,
-        "expects_abstain": false,
-        "abstained_ok": false,
-        "expects_auto": false,
-        "abstained": false,
-        "safety_row": true,
-        "safety_category": "clinical",
-        "safety_ok": true,
-        "stale_seen": false,
-        "stale_caught": false,
-        "tiers": [
-          "light"
-        ],
-        "llm_fallback": false,
-        "llm_output_rejected": false,
-        "latency_ms": 15.0,
-        "error": null
-      },
-      {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-14",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2192,10 +2334,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 15.0,
+        "latency_ms": 15.3,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-15",
         "expected_type": "claim_status_inquiry",
         "got_type": "claim_status_inquiry",
@@ -2235,10 +2380,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 21.5,
+        "latency_ms": 21.6,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-16",
         "expected_type": "prior_auth_status",
         "got_type": "prior_auth_status",
@@ -2281,10 +2429,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 20.0,
+        "latency_ms": 20.7,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-17",
         "expected_type": "prior_auth_status",
         "got_type": "prior_auth_status",
@@ -2327,10 +2478,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 22.2,
+        "latency_ms": 23.9,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-18",
         "expected_type": "claim_status_inquiry",
         "got_type": "claim_status_inquiry",
@@ -2370,10 +2524,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 21.2,
+        "latency_ms": 21.5,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-19",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2412,10 +2569,13 @@
         "tiers": [],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 9.5,
+        "latency_ms": 9.8,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-20",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2454,10 +2614,13 @@
         "tiers": [],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 9.7,
+        "latency_ms": 10.0,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-21",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2497,10 +2660,13 @@
         "tiers": [],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 9.7,
+        "latency_ms": 9.4,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-22",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2539,10 +2705,13 @@
         "tiers": [],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 9.4,
+        "latency_ms": 9.1,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-23",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2584,10 +2753,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 15.8,
+        "latency_ms": 15.0,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-24",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2628,10 +2800,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 15.9,
+        "latency_ms": 16.0,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-25",
         "expected_type": "unknown",
         "got_type": "unknown",
@@ -2673,10 +2848,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 15.5,
+        "latency_ms": 14.8,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-26",
         "expected_type": "general_policy_question",
         "got_type": "general_policy_question",
@@ -2718,10 +2896,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 20.2,
+        "latency_ms": 19.8,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-27",
         "expected_type": "general_policy_question",
         "got_type": "general_policy_question",
@@ -2763,10 +2944,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 21.4,
+        "latency_ms": 21.1,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-28",
         "expected_type": "general_policy_question",
         "got_type": "general_policy_question",
@@ -2812,6 +2996,9 @@
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-29",
         "expected_type": "complaint_grievance",
         "got_type": "complaint_grievance",
@@ -2853,10 +3040,13 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 22.5,
+        "latency_ms": 21.8,
         "error": null
       },
       {
+        "expected_decision": "",
+        "expected_cite": "",
+        "decision_ok": true,
         "id": "HO-30",
         "expected_type": "complaint_grievance",
         "got_type": "complaint_grievance",
@@ -2898,7 +3088,7 @@
         ],
         "llm_fallback": false,
         "llm_output_rejected": false,
-        "latency_ms": 21.2,
+        "latency_ms": 21.5,
         "error": null
       }
     ]

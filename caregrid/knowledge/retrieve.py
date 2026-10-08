@@ -111,6 +111,33 @@ def _search_scores(candidates: list[Page], query: str, llm: LLM) -> dict[str, fl
     return {p.id: 0.5 * float(bm_abs[i]) + 0.5 * cos[i] for i, p in enumerate(candidates)}
 
 
+def find_howto_workflow(brain: Brain, masked_text: str, llm: LLM) -> Page | None:
+    """The approved current workflow a "how do I ..." question is about: same relevance rule as policies (combined BM25 + cosine score of this
+    query >= POLICY_MIN_SCORE). The generic General Policy Question workflow is not a process, so it never matches. Best score wins, ties by id."""
+    from caregrid.reasoning.extract import is_howto       # lazy: keeps retrieval importable without the extractor
+
+    if not is_howto(masked_text):
+        return None
+    candidates = [p for p in brain.current_pages(PageType.WORKFLOW) if "general_policy_question" not in p.request_types and p.meta.get("steps")]
+    scores = _search_scores(candidates, masked_text, llm)
+    ranked = sorted((p for p in candidates if scores[p.id] >= config.POLICY_MIN_SCORE), key=lambda p: (-scores[p.id], p.id))
+    if not ranked:
+        return None
+    rules: dict[str, set] = {}
+    for pid in ranked[0].meta.get("policy_ids", []):         # linked policies that disagree: this is not a clean how-to, the normal pipeline (conflict, human) handles it
+        pol = brain.get(pid)
+        if pol is not None and pol.meta.get("rule_key"):
+            rules.setdefault(pol.meta["rule_key"], set()).add(str(pol.meta.get("rule_value")))
+    return None if any(len(v) > 1 for v in rules.values()) else ranked[0]
+
+
+def attach_howto(ret: RetrievalResult, brain: Brain, howto: Page | None) -> None:
+    """Record the matched workflow on the retrieval result together with its linked approved current policies."""
+    ret.howto_workflow = howto
+    ret.howto_policies = [p for pid in (howto.meta.get("policy_ids", []) if howto else [])
+                          if (p := brain.get(pid)) is not None and p.type == PageType.POLICY and p.status == PageStatus.APPROVED]
+
+
 def retrieve(brain: Brain, cls: Classification, masked_text: str, llm: LLM) -> RetrievalResult:
     wf = brain.workflow_for(cls.request_type)
     team = brain.team(str(wf.meta.get("team"))) if wf else None

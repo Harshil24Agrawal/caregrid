@@ -136,6 +136,8 @@ class RetrievalResult(BaseModel):
     precedents_stale: list[ScoredPrecedent] = []
     regulatory: list[Page] = []
     case_facts: dict[str, str] = {}          # derived before rules: category, missing, risk, team (used for precedent matching)
+    howto_policies: list[Page] = []          # approved current policies linked from that workflow (cited with it)
+    howto_workflow: Page | None = None       # a "how do I ..." question matched a workflow page: the answer is that workflow's steps (built by code)
 
 class RuleResult(BaseModel):
     required_fields: list[str] = []

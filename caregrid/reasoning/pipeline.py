@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from caregrid.knowledge.brain import Brain
-from caregrid.knowledge.retrieve import retrieve
+from caregrid.knowledge.retrieve import attach_howto, find_howto_workflow, retrieve
 from caregrid.llm import LLM
 from caregrid.models import (
     Band, Case, Channel, Citation, Classification, Confidence, ReasonCode, RetrievalResult, Role, State, User,
@@ -129,13 +129,18 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
         "is_clinical": cls.is_clinical or ReasonCode.CLINICAL in guard.overrides,
         "is_account_specific": cls.is_account_specific or ReasonCode.ACCOUNT_SPECIFIC in guard.overrides,
         "is_sensitive": cls.is_sensitive or ReasonCode.SENSITIVE in guard.overrides})
+    howto = find_howto_workflow(brain, guard.masked_text, llm) if not (cls.is_clinical or cls.is_sensitive) else None
+    if howto is not None:                                      # "how do I ...": a question about the process, answered with the workflow's steps
+        cls = cls.model_copy(update={"request_type": "general_policy_question", "rules_type": "general_policy_question",
+                                     "is_account_specific": False, "extracted_fields": {}})
     case.classification = cls
     _to(store, case, State.CLASSIFIED)
     log(store, "classified", None, case_id, request_type=cls.request_type, llm_confidence=cls.llm_confidence,
-        rules_type=cls.rules_type, model_used=cls.model_used, fields=sorted(cls.extracted_fields))
+        rules_type=cls.rules_type, model_used=cls.model_used, fields=sorted(cls.extracted_fields), howto=howto.id if howto else None)
 
     # 3 retrieve
     ret = retrieve(brain, cls, guard.masked_text, llm)
+    attach_howto(ret, brain, howto)
     rules = apply_rules(cls, ret, brain, guard)             # computed here: a conflicting policy joins the context
     if cls.model_used == FALLBACK_MODEL and "llm_fallback" not in rules.notes:
         rules.notes.append("llm_fallback")

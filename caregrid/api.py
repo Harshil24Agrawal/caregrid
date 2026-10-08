@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from caregrid import config
 from caregrid.insights import metrics
-from caregrid.insights.explain import case_summary, one_liner
+from caregrid.insights.explain import case_summary, one_liner, workflow_guidance
 from caregrid.insights.graph import case_graph
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.lint import lint
@@ -269,6 +269,7 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
         "proposal": None,
         "reviewer": None,
         "evidence": evidence(case, user, brain),
+        "guidance": workflow_guidance(case, brain, store.list_audit(case.id)),
         "actions": approval_gate(user, case),
     }
     if prop:

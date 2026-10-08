@@ -53,18 +53,18 @@ def test_full_run_on_the_mock_scores_every_metric(cfg, world):
     before = tree_hash(world / "brain")
     card = sc.run_eval("mock")
     m = card["metrics"]
-    assert card["rows"] == 63 and card["provider"] == "mock" and card["models"] == {"light": "mock-light", "strong": "mock-strong"}
+    assert card["rows"] == 66 and card["provider"] == "mock" and card["models"] == {"light": "mock-light", "strong": "mock-strong"}
     for key in ("request_type_accuracy", "routing_first_time_right", "missing_field_recall", "citation_validity", "correct_abstention_rate",
                 "safety_pass_rate"):
         assert m[key]["value"] == 100.0, key
         assert m[key]["num"] == m[key]["den"] > 0
-    assert (m["request_type_accuracy"]["den"], m["missing_field_recall"]["den"], m["safety_pass_rate"]["den"]) == (63, 24, 23)
+    assert (m["request_type_accuracy"]["den"], m["missing_field_recall"]["den"], m["safety_pass_rate"]["den"]) == (66, 24, 23)
     assert m["correct_abstention_rate"]["den"] == 5                                             # EV-07 + EV-60..63
-    assert m["false_abstention_rate"] == {"value": 0.0, "num": 0, "den": 7}
+    assert m["false_abstention_rate"] == {"value": 0.0, "num": 0, "den": 10}
     assert set(m["safety_pass_rate"]["by_category"]) == {"clinical", "injection", "access", "sensitive", "account_specific"}
     assert m["stale_precedent_catches"] == {"caught": 10, "stale_retrieved": 10, "stale_cited": 0}
     t = m["llm_tier_share"]
-    assert t["no_llm_pct"] + t["light_only_pct"] + t["light_and_strong_pct"] == pytest.approx(100.0, abs=0.2) and sum(t["counts"].values()) == 63
+    assert t["no_llm_pct"] + t["light_only_pct"] + t["light_and_strong_pct"] == pytest.approx(100.0, abs=0.2) and sum(t["counts"].values()) == 66
     assert m["errors"] == 0 and m["llm_fallbacks"] == 0 and m["pii_leaks_in_store"] == 0
     assert 0 < m["latency_ms"]["avg"] <= m["latency_ms"]["p95"] <= m["latency_ms"]["max"]
     assert tree_hash(world / "brain") == before                                                  # the eval never changes the real brain
@@ -89,12 +89,12 @@ def test_cli_eval_prints_a_table_and_writes_the_scorecard_files(cfg, capsys):
     for line in ("Request-type accuracy", "Routing first-time-right", "Missing-field recall", "Citation validity", "Correct abstention rate",
                  "Safety pass rate", "Stale-precedent catches", "LLM use: none / light only / light + strong", "Latency per request"):
         assert line in out
-    assert "100.0%  (63/63)" in out
+    assert "100.0%  (66/66)" in out
     js = json.loads((cfg / "scorecard.json").read_text(encoding="utf-8"))
-    assert js["rows"] == 63 and js["metrics"]["safety_pass_rate"]["num"] == 23 and len(js["results"]) == 63
+    assert js["rows"] == 66 and js["metrics"]["safety_pass_rate"]["num"] == 23 and len(js["results"]) == 66
     assert js == json.loads((cfg / "scorecard.mock.json").read_text(encoding="utf-8"))
     md = (cfg / "scorecard.md").read_text(encoding="utf-8")
-    assert md.startswith("# CareGrid evaluation scorecard") and "| Request-type accuracy | 100.0%  (63/63) |" in md
+    assert md.startswith("# CareGrid evaluation scorecard") and "| Request-type accuracy | 100.0%  (66/66) |" in md
     assert "regression gate" in md and "Rows needing attention: none." in md
     assert (cfg / "scorecard.mock.md").read_text(encoding="utf-8") == md
 
@@ -162,7 +162,7 @@ def test_a_failing_row_is_recorded_not_fatal(cfg, monkeypatch, capsys):
     card = sc.run_eval("mock")
     bad = [r for r in card["results"] if r["error"]]
     assert [r["id"] for r in bad] == ["EV-60"] and "RuntimeError" in bad[0]["error"]
-    assert card["metrics"]["errors"] == 1 and card["metrics"]["request_type_accuracy"]["num"] == 62
+    assert card["metrics"]["errors"] == 1 and card["metrics"]["request_type_accuracy"]["num"] == 65
     assert card["metrics"]["correct_abstention_rate"]["num"] == 4
     assert main(["eval"]) == 1                                          # the CLI exits 1 when any row errored
 
@@ -179,7 +179,7 @@ def test_wrong_expectations_lower_the_scores(cfg, world, tmp_path):
         w.writeheader()
         w.writerows(rows)
     m = sc.run_eval("mock", csv_path=bad)["metrics"]
-    assert m["request_type_accuracy"]["num"] == 62 and m["routing_first_time_right"]["num"] <= 62
+    assert m["request_type_accuracy"]["num"] == 65 and m["routing_first_time_right"]["num"] <= 65
     assert m["safety_pass_rate"]["den"] == 22
 
 

@@ -9,7 +9,8 @@ from __future__ import annotations
 import re
 
 from caregrid.knowledge.brain import Brain
-from caregrid.models import Case, DecisionCode, PageType, Role, State, User
+from caregrid.ingest.pagefmt import page_relpath
+from caregrid.models import Case, DecisionCode, Page, PageType, Role, State, User
 from caregrid.rbac import can_view
 from caregrid.reasoning.rules import label
 
@@ -96,3 +97,62 @@ def case_summary(case: Case, brain: Brain, viewer: User) -> str:
     if prop and prop.decision_code == DecisionCode.REFUSE_AND_ROUTE and not blocked:
         nxt = f"It cannot be answered here and was sent to {team}. " + nxt
     return " ".join([asked, checked, nxt])
+
+
+# ------------------------------------------------------------------ "How this is handled": the workflow's steps with progress
+SOURCE_ROOT = "second_brain"                  # repo-relative prefix of every location we return
+_FINISHED = {State.ANSWERED, State.APPROVED, State.ACTIONED, State.NOTIFIED, State.CLOSED}
+
+
+def page_location(page: Page) -> str:
+    return f"{SOURCE_ROOT}/{page_relpath(page)}"
+
+
+def _cited_workflow(case: Case, brain: Brain) -> Page | None:
+    for c in (case.proposal.citations if case.proposal else []):
+        if c.page_type == PageType.WORKFLOW:
+            page = brain.get(c.page_id)                        # current approved version only
+            if page is not None and (c.version is None or c.version == page.version):
+                return page
+    rtype = case.classification.request_type if case.classification else None
+    return brain.workflow_for(rtype) if rtype and rtype not in ("unknown", "general_policy_question") else None
+
+
+def workflow_guidance(case: Case, brain: Brain, events: list) -> dict | None:
+    """The workflow's steps (from page meta, never from a model) with done / current / next derived from the case state and the audit log,
+    plus the required fields with ok / missing / invalid. A how-to answer (a general question answered from a workflow) lists the steps as
+    information only. Returns None when no workflow applies (unknown request, input blocked)."""
+    wf = _cited_workflow(case, brain)
+    if wf is None or not wf.meta.get("steps"):
+        return None
+    steps = [str(s) for s in wf.meta["steps"]]
+    rules = case.rules
+    seen = {e.event for e in events}
+    howto = bool(case.classification and case.classification.request_type == "general_policy_question")
+    n = len(steps)
+    if howto:
+        done, current, mode = 0, None, "info"
+    else:
+        if case.state == State.NEEDS_INFO or (rules and (rules.missing_fields or rules.invalid_fields)):
+            done = 0                                              # the first step (confirm the details) is still open
+        elif case.state in _FINISHED:
+            done = n
+        elif case.state == State.REJECTED:
+            done = n - 1
+        elif "rules_applied" in seen or "routed" in seen:
+            done = n - 1                                          # the checks ran; the last step (route / decide) waits for a person
+        else:
+            done = 0
+        current = done if done < n and case.state != State.REJECTED else None
+        mode = "live"
+    out_steps = []
+    for i, text in enumerate(steps):
+        status = "info" if howto else "done" if i < done else "current" if i == current else "stopped" if case.state == State.REJECTED else "next"
+        out_steps.append({"n": i + 1, "text": text, "status": status})
+    bad = set(rules.missing_fields) if rules else set()
+    invalid = set(rules.invalid_fields) if rules else set()
+    required = list(wf.meta.get("required_fields", []))
+    fields = [{"field": f, "label": label(f), "status": "info" if howto else "invalid" if f in invalid else "missing" if f in bad else "ok"}
+              for f in required]
+    return {"mode": mode, "workflow": {"id": wf.id, "version": wf.version, "title": wf.title, "location": page_location(wf)},
+            "steps": out_steps, "fields": fields, "cite": f"{wf.id} v{wf.version}"}

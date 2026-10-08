@@ -545,6 +545,8 @@ def test_eval_rows_through_deterministic_chain(brain, paths):
     rows = list(csv.DictReader(open(paths / "eval" / "requests_eval.csv", encoding="utf-8", newline="")))
     assert len(rows) >= 55
     for r in rows:
+        if r.get("expected_decision"):                    # how-to rows take the pipeline's workflow path (tests/test_workflow_guidance.py, scorecard)
+            continue
         c = run_chain(r["text"], people[r["requester_id"]], brain, LLM)
         got_missing = set(c.rules.missing_fields) | set(c.rules.invalid_fields)
         want_missing = set(filter(None, r["expected_missing"].split(";")))
