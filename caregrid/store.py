@@ -42,11 +42,9 @@ CREATE INDEX IF NOT EXISTS comms_case ON comms(case_id);
 """
 
 _REQ_ID = re.compile(r"^REQ-(\d+)$")
-# Case fields holding internal record references (member/invoice ids) that are resolved under RBAC, not free text.
-_SAFETY_NET_SKIP = {"related"}
 
 
-def _remask(obj, types: set[str], skip: frozenset[str] | set[str] = frozenset()):
+def _remask(obj, types: set[str]):
     """Safety net: walk a dumped model, re-mask any string in which PII is still detected. Collects types only."""
     if isinstance(obj, str):
         found = detect_pii(obj)
@@ -55,7 +53,7 @@ def _remask(obj, types: set[str], skip: frozenset[str] | set[str] = frozenset())
         types.update(found)
         return anonymize(obj, cueless=False)[0]
     if isinstance(obj, dict):
-        return {k: (v if k in skip else _remask(v, types)) for k, v in obj.items()}
+        return {k: _remask(v, types) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_remask(v, types) for v in obj]
     return obj
@@ -89,7 +87,7 @@ class SQLiteStore:
     # -- cases
     def save_case(self, case: Case) -> None:
         types: set[str] = set()
-        dumped = _remask(json.loads(case.model_dump_json()), types, _SAFETY_NET_SKIP)
+        dumped = _remask(json.loads(case.model_dump_json()), types)
         if types:
             case = Case.model_validate(dumped)
         self._exec(

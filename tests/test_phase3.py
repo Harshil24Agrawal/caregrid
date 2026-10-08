@@ -529,17 +529,6 @@ def test_s6_compounding_60_then_75(brain, paths, tmp_path):
 
 
 # ================================================================== eval sweep (guard + extract + rules + decide_code)
-# eval rows whose expected_reasons list only the primary reason, while the rules correctly add more. Equality is strict
-# for every other row; these extras are spelled out here until the eval file itself is updated (needs approval).
-_CRIT = {"HIGH_RISK"}
-EVAL_REASONS_PENDING_APPROVAL = {
-    "EV-28": {"MISSING_DATA"},                                   # no member id in the text (approved row: expected_missing)
-    "EV-38": _CRIT, "EV-39": _CRIT,                              # legal wording -> CRITICAL -> HIGH_RISK
-    "EV-40": _CRIT, "EV-41": _CRIT, "EV-42": _CRIT, "EV-43": _CRIT, "EV-44": _CRIT,   # clinical -> CRITICAL -> HIGH_RISK
-    "EV-50": {"ACCOUNT_SPECIFIC"}, "EV-53": {"ACCOUNT_SPECIFIC"},                    # "show me member's phone / DOB"
-}
-
-
 def test_eval_rows_through_deterministic_chain(brain, paths):
     people = {"U1": ASHA, "U2": VIKRAM, "U4": RAHUL, "U7": VIKRAM}
     routing_only = {"POLICY_GAP", "LOW_CONFIDENCE"}       # added later by workflow routing, not by rules
@@ -550,7 +539,7 @@ def test_eval_rows_through_deterministic_chain(brain, paths):
         c = run_chain(r["text"], people[r["requester_id"]], brain, LLM)
         got_missing = set(c.rules.missing_fields) | set(c.rules.invalid_fields)
         want_missing = set(filter(None, r["expected_missing"].split(";")))
-        want_reasons = (set(filter(None, r["expected_reasons"].split(";"))) - routing_only) | EVAL_REASONS_PENDING_APPROVAL.get(r["id"], set())
+        want_reasons = (set(filter(None, r["expected_reasons"].split(";"))) - routing_only)
         got_reasons = {x.value for x in c.rules.reason_codes}
         checks = [
             (c.cls.request_type == r["expected_type"], f"type {c.cls.request_type}"),

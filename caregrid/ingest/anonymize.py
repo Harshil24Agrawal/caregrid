@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from caregrid.ingest.names import STOP_STATIC, mask_cueless_names, stop_terms_from_titles
-from caregrid.ingest.normalize import normalize_text
+from caregrid.ingest.normalize import iso_effective_dates, normalize_text
 
 # ---- emails: anchored on '@', bounded, tolerant of spaces around dots and '@' ("jane . doe @ clinic .example")
 _L = r"[A-Za-z0-9_%+-]{1,64}"
@@ -181,7 +181,7 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
             found.add(kind)
         return out
 
-    s = normalize_text(text)
+    s = iso_effective_dates(normalize_text(text))
     s = sub(DOB, lambda m: f"{m.group(1)}{m.group(2)}[DATE_OF_BIRTH]", s, "DATE_OF_BIRTH")
 
     # ISO dates (effective dates) are protected while the digit rules run, then restored

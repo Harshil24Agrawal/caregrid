@@ -12,7 +12,7 @@ from datetime import date
 
 from caregrid.ingest.anonymize import DOB, EMAIL, NPI_CONTEXT, Gazetteer, anonymize
 from caregrid.ingest.names import AMBIGUOUS, CAP_WORD, STOP_STATIC, first_names
-from caregrid.ingest.normalize import collapse_letters, normalize_text
+from caregrid.ingest.normalize import collapse_letters, iso_effective_dates, normalize_text
 from caregrid.models import GuardResult, ReasonCode, Role, User
 from caregrid.reasoning.extract import find_cost, find_effective_date
 
@@ -54,17 +54,21 @@ LEGAL_WORDS = re.compile(r"\blawyers?\b|\blegal\b|\bcourt\b|\battorney\b|\bsolic
 
 _VERB = r"(?:show|tell|give|share|reveal|read|display|provide|send|list|look up|what(?:'s| is| are)|get)"
 _ATTR = r"(?:phone|e-?mail|home address|address|dob|date of birth|birth ?date|details|balance|plan|amounts?|ssn)"
-_SUBJ = (r"(?:member|patient|M[- ]?\d{5,12}|Dr\.?\s+[A-Z]\w+|(?:Ms|Mr|Mrs)\.?\s+[A-Z]\w+|CLM-\d+|INV-\d+|invoice|claim)")
+_SUBJ = (r"(?:member|patient|M[- ]?\d{5,12}|PA-[\d-]+|Dr\.?\s+[A-Z]\w+|(?:Ms|Mr|Mrs)\.?\s+[A-Z]\w+|CLM-\d+|INV-\d+|invoice|claim)")
 ACCOUNT_REQUEST = re.compile(
     rf"\b{_VERB}\b[^.?!]{{0,70}}?\b{_SUBJ}[^.?!]{{0,70}}?\b{_ATTR}\b|"
     rf"\b{_VERB}\b[^.?!]{{0,70}}?\b{_ATTR}\b[^.?!]{{0,70}}?\b{_SUBJ}", re.I)
 # no-verb form: "Sunita Sharma phone number and DOB please". Narrower attributes, and never a change request.
 _ATTR_BARE = re.compile(r"\b(?:phone|e-?mail|dob|date of birth|birth ?date|ssn|home address|residential address|details|balance)\b", re.I)
-_SUBJECT_TOKEN = re.compile(r"(?i:(?<!staff )(?<!team )\b(?:member|patient)\b)|\bM[- ]?\d{5,12}\b|\b(?:Dr|Ms|Mr|Mrs)\.?\s+[A-Z]\w+")
+_SUBJECT_TOKEN = re.compile(r"(?i:(?<!staff )(?<!team )\b(?:member|patient)\b)|\bM[- ]?\d{5,12}\b|\b(?:CLM|PA|INV)-\d+|(?i:\bNPI\b)\W{0,3}\d{5,12}|\b(?:Dr|Ms|Mr|Mrs)\.?\s+[A-Z]\w+")
 _CHANGE_VERB = re.compile(r"\b(?:updat\w*|chang\w*|correct\w*|edit\w*|replac\w*|modif\w*|new|add|moved?|submit\w*)\b", re.I)
 # a sentence that already contains the value (an email address, a long number, a date) is providing details, not asking
 _PROVIDES_VALUE = re.compile(r"[^\s@]{1,64}@[^\s@]{1,64}|(?<![A-Za-z0-9-])\d{6,}|\d{4}-\d{2}-\d{2}")   # an M-id's digits are not a value
+_NPI_DIGITS = re.compile(r"(?i)\bNPI\b\W{0,3}[\d -]{5,}")   # an NPI's digits identify the target, not a provided value
 _SENTENCE_SPLIT = re.compile(r"(?<!\bDr)(?<!\bMs)(?<!\bMr)(?<!\bMrs)[.?!;\n]+")
+
+# something the request points at, after masking: a person/member/provider token, a masked id, or a claim/auth/invoice id
+_TARGET = re.compile(r"\[(?:PERSON|MEMBER|PROVIDER)_\d+\]|\[MEMBER_ID\]|\[NPI\]|\b(?:CLM|PA|INV)-\d+")
 
 _COUNT = r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|half a|half|a couple of)"
 _UNIT = r"(?:mg|mcg|ml|units?|tablets?|pills?|capsules?|doses?|drops?)"
@@ -118,7 +122,7 @@ def _bare_account_request(*views: str) -> bool:
     pool = first_names()
     for view in views:
         for sentence in _SENTENCE_SPLIT.split(view):
-            if not _ATTR_BARE.search(sentence) or _CHANGE_VERB.search(sentence) or _PROVIDES_VALUE.search(sentence):
+            if not _ATTR_BARE.search(sentence) or _CHANGE_VERB.search(sentence) or _PROVIDES_VALUE.search(_NPI_DIGITS.sub("NPI", sentence)):
                 continue
             if _SUBJECT_TOKEN.search(sentence):
                 return True
@@ -141,11 +145,11 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
     too_long = len(text) > MAX_INPUT_CHARS
     if too_long:
         allowed = False
-        add(ReasonCode.ACCESS_DENIED)
-        notes.append("input too long")
+        add(ReasonCode.UNCLEAR_INTENT)
+        notes.append(f"input too long (max {MAX_INPUT_CHARS} chars)")
         text = text[:MAX_INPUT_CHARS]
 
-    norm = normalize_text(text)
+    norm = iso_effective_dates(normalize_text(text))
     coll = collapse_letters(norm)
     validated = validate_ids(norm)
 
@@ -155,7 +159,10 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
         add(ReasonCode.ACCESS_DENIED)
         add(ReasonCode.SENSITIVE)
         notes.append("prompt-injection pattern detected")
-    if _hit(ACCOUNT_REQUEST, norm, coll) or _bare_account_request(norm, coll):
+    masked, pii_types = anonymize(norm, gazetteer)
+    # a request for someone's details only counts when there is a TARGET in the masked text;
+    # generic process questions ("what is the process to change a member's email?") stay allowed
+    if (_hit(ACCOUNT_REQUEST, norm, coll) or _bare_account_request(norm, coll)) and _TARGET.search(masked):
         add(ReasonCode.ACCOUNT_SPECIFIC)
         notes.append("request for a specific record's personal details")
         if user.role in NO_RECORD_ACCESS:
@@ -169,7 +176,6 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
         add(ReasonCode.SENSITIVE)
         notes.append("sensitive content (complaint/legal/privacy)")
 
-    masked, pii_types = anonymize(norm, gazetteer)
     if too_long:
         masked += " [truncated]"
     return GuardResult(allowed=allowed, masked_text=masked, pii_types_found=pii_types, overrides=overrides,

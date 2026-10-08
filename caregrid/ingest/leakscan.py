@@ -68,15 +68,13 @@ def leak_scan(brain_dir: Path, data_dir: Path | None = None) -> list[LintFinding
 
 
 def leak_scan_store(store, data_dir: Path | None = None) -> list[LintFinding]:
-    """Scan persisted cases, audit rows and communications. `related` (internal record references that are resolved
-    under RBAC) is excluded, exactly as in the store's own safety net."""
+    """Scan persisted cases, audit rows and communications. Nothing is exempt: `related` holds surrogate PRF-xxxx keys."""
     data_dir = Path(data_dir) if data_dir is not None else config.DATA_DIR
     gaz = build_gazetteer(data_dir)
     allowed = team_mailboxes(data_dir)
     findings: list[LintFinding] = []
 
     def scan(label: str, obj: dict) -> None:
-        obj = {k: v for k, v in obj.items() if k != "related"}
         findings.extend(_findings(label, detect_pii(json.dumps(obj, ensure_ascii=False, default=str), gaz, allowed)))
 
     for c in store.list_cases():

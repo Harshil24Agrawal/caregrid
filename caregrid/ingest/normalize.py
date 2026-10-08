@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import date
 
 _INVISIBLE = re.compile("[​-‏⁠­﻿‪-‮⁦-⁩]")
 
@@ -41,3 +42,22 @@ def detection_views(text: str) -> tuple[str, str]:
     """(normalised, normalised+letter-collapsed): patterns should be tried on both."""
     norm = normalize_text(text)
     return norm, collapse_letters(norm)
+
+
+# "effective 12/03/2026", "from 12-03-2026", "w.e.f. 12.03.2026": the label says it is an effective date, not a birth date
+_LABELLED_DMY = re.compile(
+    r"(?i)\b(effective(?:\s+date)?(?:\s+(?:on|from|of|is))?|starting(?:\s+(?:on|from))?|from|w\.?e\.?f\.?)"
+    r"(\s{0,2}[:\-]?\s{0,2})(\d{1,2})([/.-])(\d{1,2})\4(\d{4})(?!\d)")
+
+
+def iso_effective_dates(text: str) -> str:
+    """Rewrite LABELLED dd/mm/yyyy (or dd-mm-yyyy, dd.mm.yyyy) dates to ISO so they survive masking as effective dates.
+    Day-first is assumed (decision logged); an impossible date is left alone and will be masked like any other date."""
+    def fix(m: re.Match[str]) -> str:
+        try:
+            iso = date(int(m.group(6)), int(m.group(5)), int(m.group(3))).isoformat()
+        except ValueError:
+            return m.group(0)
+        return f"{m.group(1)}{m.group(2)}{iso}"
+
+    return _LABELLED_DMY.sub(fix, text)

@@ -186,7 +186,9 @@ def apply_rules(cls: Classification, ret: RetrievalResult, brain: Brain, guard: 
     # ---- finish ----------------------------------------------------------------------
     res.reason_codes = reasons
     res.approver_role = APPROVER_BY_RISK[res.risk]
-    res.hard_override = any(c in HARD_OVERRIDES for c in reasons) or res.action_tier == ActionTier.WRITE
+    # a request refused by the input guard (incl. "input too long") always goes to a human, whatever its reason code
+    res.hard_override = (any(c in HARD_OVERRIDES for c in reasons) or res.action_tier == ActionTier.WRITE
+                         or not guard.allowed)
     return res
 
 
