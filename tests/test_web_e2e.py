@@ -375,3 +375,28 @@ def test_case_page_shows_how_this_is_handled_and_a_howto_answer(web):
     cid = case_id_of(cid)
     p = web.go("/case.html?case=" + cid, "#guidance")
     assert "HOW THIS IS DONE" in text(p, "#guidance").upper() and "YOU WILL NEED" in text(p, "#guidance").upper()
+
+
+def test_why_this_decision_panel_opens_the_source_section(web):
+    web.as_user("U4")
+    p = web.go("/case.html?case=CASE-1024", "#why .prov")
+    panel = text(p, "#why")
+    assert "KA-40 v1 · DME equipment requests · § Threshold · second_brain/policy/KA-40@v1.md" in panel
+    assert "second_brain/config/routing_rules.csv#RR-07" in panel
+    p.locator("#why a.btn", has_text="Open").nth(2).click()                       # request type / risk / ...: a page source
+    p.wait_for_selector(".sec.hl", timeout=T)
+    assert "/knowledge.html?page=" in p.url and "#" in p.url
+    assert p.locator(".sec.hl").count() == 1
+    web.go("/knowledge.html?page=KA-40&v=1#threshold", ".sec.hl")
+    assert "threshold" in p.url and p.locator("#sec-threshold.hl").count() == 1
+    web.as_user("U1")
+    p = web.go("/case.html?case=CASE-1024", "#why .prov")
+    assert text(p, "#why").count("restricted for your role") == 5
+
+
+def test_assistant_reply_shows_a_sources_line(web):
+    web.as_user("U4")
+    p = web.go("/case.html?case=CASE-1024", "#assistant [data-q]")
+    p.click("#assistant [data-q='Why is this case flagged?']")
+    p.wait_for_selector("#chat .sources", timeout=T)
+    assert "second_brain/policy/KA-40@v1.md" in text(p, "#chat .sources")

@@ -128,7 +128,7 @@ def workflow_guidance(case: Case, brain: Brain, events: list) -> dict | None:
     steps = [str(s) for s in wf.meta["steps"]]
     rules = case.rules
     seen = {e.event for e in events}
-    howto = bool(case.classification and case.classification.request_type == "general_policy_question")
+    howto = bool(case.classification and case.classification.request_type == "general_policy_question" and "general_policy_question" not in wf.request_types)
     n = len(steps)
     if howto:
         done, current, mode = 0, None, "info"

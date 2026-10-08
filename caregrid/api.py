@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field, field_validator
 from caregrid import config
 from caregrid.insights import metrics
 from caregrid.insights.explain import case_summary, one_liner, workflow_guidance
+from caregrid.insights.provenance import format_source, page_sections, provenance, source_for_citation
 from caregrid.insights.graph import case_graph
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.lint import lint
@@ -299,7 +300,10 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
                             "capped_at_medium": capped} if conf else None),
             "citations_considered": considered,
         }
-    return scrub(detail, user)
+    detail = scrub(detail, user)
+    # claims go through check_output; locations (second_brain/policy/KA-12@v3.md) are code-built and would look like an e-mail address to a scrubber
+    detail["provenance"] = provenance(case, brain, user, clean=lambda t: check_output(t, user)[1])
+    return detail
 
 
 def must_get_case(case_id: str, user: User, store: SQLiteStore) -> Case:
@@ -452,7 +456,11 @@ def api_assistant(case_id: str, body: AssistantIn, user: User = Depends(actor)):
     store, brain, llm = get_store(), get_brain(), get_llm_client()
     case = must_get_case(case_id, user, store)
     reply = assistant_mod.ask(case, body.question, user, brain, store, llm)
-    return {"text": reply.text, "citations": reply.citations, "restricted": reply.restricted, "refused": reply.refused,
+    sources = [] if reply.restricted or reply.refused else [s for pid in reply.citations if (s := source_for_citation(brain, pid, case)) is not None]
+    for s in sources:
+        s["title"] = check_output(s["title"] or "", user)[1]
+    text = reply.text + ("\n\nSources: " + "; ".join(format_source(s) for s in sources) if sources else "")     # same line the Case page shows
+    return {"text": text, "sources": sources, "citations": reply.citations, "restricted": reply.restricted, "refused": reply.refused,
             "model_used": reply.model_used, "tier": reply.tier, "chips": reply.chips}
 
 
@@ -545,7 +553,8 @@ def api_page(page_id: str, version: int | None = None, user: User = Depends(acto
                       "body": prec.summary, "meta": {"request_type": prec.request_type, "decision_code": prec.decision_code.value,
                                                       "route_team": prec.route_team, "policy_id": prec.policy_id,
                                                       "policy_version": prec.policy_version, "outcome": prec.outcome},
-                      "links": [], "versions": [{"version": 1, "status": prec.status.value}]}, user)
+                      "links": [], "versions": [{"version": 1, "status": prec.status.value}],
+                      "sections": [{"slug": "case", "heading": "Past decision", "text": prec.summary[:300]}]}, user)
     page = brain.get(page_id, version)
     current = brain.get(page_id)
     if page is None or (not admin and (current is None or page.version != current.version or page.status != PageStatus.APPROVED)):
@@ -555,7 +564,7 @@ def api_page(page_id: str, version: int | None = None, user: User = Depends(acto
     return scrub({"id": page.id, "type": page.type.value, "version": page.version, "status": page.status.value, "title": page.title,
                   "owner": page.owner, "effective_from": page.effective_from.isoformat() if page.effective_from else None,
                   "request_types": page.request_types, "links": page.links, "body": page.body, "meta": page.meta,
-                  "versions": sorted(versions, key=lambda v: v["version"])}, user)
+                  "versions": sorted(versions, key=lambda v: v["version"]), "sections": page_sections(page)}, user)
 
 
 @app.get("/api/lint")

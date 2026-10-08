@@ -49,6 +49,13 @@
     if (cur) openPage(cur, CG.q('v'));
   }
 
+  function sectionsHtml(p) {
+    if (!p.sections || !p.sections.length) return '';
+    return '<div class="sections"><div class="label" style="margin:12px 0 4px">Sections</div>' + p.sections.filter(function (s) { return s.text; }).map(function (s) {
+      return '<div class="sec" id="sec-' + CG.esc(s.slug) + '"><b>' + CG.esc(s.heading) + '</b><div class="small">' + CG.esc(s.text) + '</div></div>';
+    }).join('') + '</div>';
+  }
+
   async function openPage(id, v) {
     var box = document.getElementById('pdetail');
     CG.loading(box);
@@ -60,8 +67,11 @@
         '<button id="cmp" type="button" class="btn sm">Compare v' + p.versions[p.versions.length - 2].version + ' → v' + p.versions[p.versions.length - 1].version + '</button></div>' : '';
       box.innerHTML = '<div class="card">' + (p.status === 'draft' ? '<div class="callout amber"><b>Draft: never cited.</b> This page is not approved and cannot be used as a source.</div>' : '') +
         '<div class="flex"><h2 class="mono">' + CG.esc(p.id + ' v' + p.version) + '</h2>' + statusTag(p.status) + CG.tag(TYPE_NAME[p.type] || p.type, 'grey') + '</div><h3 style="margin:6px 0 10px">' + CG.esc(p.title) + '</h3>' + versions +
-        '<div style="white-space:pre-wrap">' + CG.esc(p.body) + '</div>' + (meta ? '<div class="rows" style="margin-top:12px">' + meta + '</div>' : '') +
+        '<div style="white-space:pre-wrap">' + CG.esc(p.body) + '</div>' + sectionsHtml(p) + (meta ? '<div class="rows" style="margin-top:12px">' + meta + '</div>' : '') +
         (p.links && p.links.length ? '<div style="margin-top:10px"><span class="label">Links</span> ' + p.links.map(function (l) { return '<a class="chip" href="' + CG.pageLink(l) + '">' + CG.esc(l) + '</a>'; }).join('') + '</div>' : '') + '<div id="cmp-box"></div></div>';
+      var want = decodeURIComponent((window.location.hash || '').replace(/^#/, ''));
+      var target = want && document.getElementById('sec-' + want);
+      if (target) { target.classList.add('hl'); target.scrollIntoView({ block: 'center' }); }
       CG.$$('#pdetail a[data-v]').forEach(function (a) { a.onclick = function (ev) { ev.preventDefault(); openPage(id, a.dataset.v); }; });
       var cmp = document.getElementById('cmp');
       if (cmp) cmp.onclick = async function () {

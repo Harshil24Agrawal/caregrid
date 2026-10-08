@@ -97,6 +97,25 @@
     return '<div class="card" id="guidance"><div class="card-title"><h2>' + (g.mode === 'info' ? 'How this is done' : 'How this is handled') + '</h2><a class="chip" href="' + CG.pageLink(g.workflow.id, g.workflow.version) + '" title="' + CG.esc(g.workflow.title + ' · ' + g.workflow.location) + '">' + CG.esc(g.cite) + '</a></div><ol class="stepper">' + steps + '</ol>' + fields + '</div>';
   }
 
+  // WHY THIS DECISION: each claim with the page, version, section and file it comes from
+  function sourceLine(s) {
+    return s.source_id + (s.version ? ' v' + s.version : '') + ' · ' + (s.title || '') + (s.section_heading ? ' · § ' + s.section_heading : '') + ' · ' + s.location;
+  }
+  CG.sourceLine = sourceLine;
+  function openLink(s) {
+    if (s.source_kind === 'routing_rule' || s.source_kind === 'guard' || !s.source_id) return '';
+    return '<a class="btn sm" href="' + CG.pageLink(s.source_id, s.version) + (s.section ? '#' + encodeURIComponent(s.section) : '') + '" aria-label="Open ' + CG.esc(s.source_id) + '">Open</a>';
+  }
+  function provenanceHtml() {
+    var rows = (c.provenance || []).map(function (e) {
+      var src = e.restricted ? '<span class="chip grey">' + CG.esc('restricted for your role') + '</span>' :
+        e.source_id ? '<span class="chip src ' + CG.esc(e.source_kind) + '" title="' + CG.esc(sourceLine(e)) + '">' + CG.esc(sourceLine(e)) + '</span> ' + openLink(e) :
+        '<span class="small muted">no source (nothing backs this part)</span>';
+      return '<div class="prov"><div class="claim">' + CG.esc(e.claim) + '</div><div class="srcs">' + src + '</div></div>';
+    }).join('');
+    return '<div class="card" id="why"><div class="card-title"><h2>Why this decision</h2><span class="small muted">claim → source</span></div>' + (rows || CG.empty('No sources recorded.')) + '</div>';
+  }
+
   function decidePanel() {
     var a = c.actions, done = '';
     if (lastResult) {
@@ -182,10 +201,17 @@
       return /^(KA|WF|TEAM|FIELD|REG|P)-/.test(id) ? '<a class="chip" href="' + CG.pageLink(id) + '">' + id + '</a>' : '<span class="chip grey">' + id + '</span>';
     });
   }
+  function botHtml(m) {
+    var cut = m.text.indexOf('\n\nSources: '), body = cut >= 0 ? m.text.slice(0, cut) : m.text;
+    var src = (m.sources || []).map(function (s) {
+      return '<div class="small srcline"><a href="' + CG.pageLink(s.source_id, s.version) + (s.section ? '#' + encodeURIComponent(s.section) : '') + '">' + CG.esc(sourceLine(s)) + '</a></div>';
+    }).join('');
+    return linkIds(body) + (src ? '<div class="sources"><b class="small">Sources</b>' + src + '</div>' : '');
+  }
   function assistantHtml() {
     return '<div class="card"><h2>Assistant</h2><p class="small muted" style="margin:4px 0 8px">Answers only from what your role can see on ' + CG.esc(c.id) + '.</p><div>' +
       CHIPS.map(function (q) { return '<button type="button" class="chip" data-q="' + CG.esc(q) + '">' + CG.esc(q) + '</button>'; }).join('') + '</div>' +
-      '<div class="chat" id="chat" aria-live="polite">' + chat.map(function (m) { return '<div class="msg ' + m.role + '">' + (m.role === 'user' ? CG.esc(m.text) : linkIds(m.text)) + '</div>'; }).join('') + '</div>' +
+      '<div class="chat" id="chat" aria-live="polite">' + chat.map(function (m) { return '<div class="msg ' + m.role + '">' + (m.role === 'user' ? CG.esc(m.text) : botHtml(m)) + '</div>'; }).join('') + '</div>' +
       '<form id="ask-form" class="flex"><label class="sr-only" for="ask-input">Question</label><input id="ask-input" type="text" maxlength="500" style="flex:1" placeholder="Ask about this case…"><button class="btn sm primary" type="submit">Ask</button></form></div>';
   }
   function wireAssistant() {
@@ -194,7 +220,7 @@
       chat.push({ role: 'user', text: q });
       refreshAssistant();
       document.getElementById('chat').insertAdjacentHTML('beforeend', '<div class="msg bot"><span class="spinner"></span></div>');
-      try { chat.push({ role: 'bot', text: (await CG_API.post('/api/cases/' + encodeURIComponent(c.id) + '/assistant', { question: q })).text }); } catch (e) { chat.push({ role: 'bot', text: e.message }); }
+      try { var res = await CG_API.post('/api/cases/' + encodeURIComponent(c.id) + '/assistant', { question: q }); chat.push({ role: 'bot', text: res.text, sources: res.sources }); } catch (e) { chat.push({ role: 'bot', text: e.message }); }
       refreshAssistant();
     }
     function refreshAssistant() { document.getElementById('assistant').innerHTML = assistantHtml(); wireAssistant(); var ch = document.getElementById('chat'); ch.scrollTop = ch.scrollHeight; }
@@ -260,7 +286,7 @@
       CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old · requested by ' + CG.esc(c.requester.name) + '</span></div></div>' +
       '<div class="card summary-card" id="summary"><h2>Summary</h2><p>' + CG.esc(c.summary) + '</p></div>' +
       '<div class="card" style="margin-bottom:16px">' + CG.pipeline(lit, -1, null, tiers) + '</div>' +
-      '<div class="grid g-case"><div class="stack"><div class="card">' + rowsHtml() + '</div>' + guidanceHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
+      '<div class="grid g-case"><div class="stack"><div class="card">' + rowsHtml() + '</div>' + guidanceHtml() + provenanceHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
       '<div class="tabs" role="tablist">' + [['evidence', 'Evidence'], ['graph', 'Graph'], ['audit', 'Audit timeline'], ['messages', 'Messages']].map(function (t) {
         return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('') + '</div><div class="card" id="tab-body"></div>';
     CG.$$('.tab', el).forEach(function (b) { b.onclick = function () { tab = b.dataset.t; draw(); }; });
