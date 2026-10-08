@@ -205,6 +205,20 @@ def llm_text_problem(texts: list[str], allowed_source: str) -> str | None:
     return None
 
 
+def _as_lines(value) -> list[str]:
+    """Small models often return a list where a string is asked for (or the reverse). Accept both shapes; nothing else."""
+    if isinstance(value, str):
+        return [ln.strip() for ln in value.splitlines() if ln.strip()]
+    if isinstance(value, list):
+        return [v.strip() for v in value if isinstance(v, str) and v.strip()]
+    return []
+
+
+def _as_text(value) -> str | None:
+    lines = _as_lines(value)
+    return "\n".join(lines) if lines else None
+
+
 _ID = re.compile(r"[A-Za-z]+-[A-Za-z0-9]+")
 
 
@@ -276,11 +290,10 @@ def propose(masked_text: str, cls: Classification, ret: RetrievalResult, rules: 
             if "llm_fallback" not in rules.notes:
                 rules.notes.append("llm_fallback")
         else:
-            l_answer = raw.get("answer_text")
-            l_steps = [s.strip()[:240] for s in raw.get("next_steps", []) if isinstance(s, str) and s.strip()][:6] \
-                if isinstance(raw.get("next_steps"), list) else []
-            l_summary = raw.get("summary_for_reviewer")
-            if not (isinstance(l_answer, str) and l_answer.strip() and isinstance(l_summary, str) and l_summary.strip()):
+            l_answer = _as_text(raw.get("answer_text"))
+            l_steps = [s.strip()[:240] for s in _as_lines(raw.get("next_steps"))][:6]
+            l_summary = _as_text(raw.get("summary_for_reviewer"))
+            if not (l_answer and l_summary):
                 rules.notes += ["llm_output_rejected", "llm_reject_reason: malformed"]
             else:
                 source = "\n".join([masked_text, rules_block(rules, decision, team), *questions,

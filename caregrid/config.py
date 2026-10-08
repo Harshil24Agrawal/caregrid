@@ -34,10 +34,14 @@ TODAY = date.fromisoformat(os.environ.get("CAREGRID_TODAY") or date.today().isof
 LLM_PROVIDER = _str("LLM_PROVIDER", "mock").lower()  # mock | bedrock | anthropic
 AWS_REGION = _str("AWS_REGION", "ap-south-1")
 LLM_TIMEOUT_S = _float("LLM_TIMEOUT_S", 20)   # per LLM call; on timeout the deterministic path takes over
+LLM_MAX_RPM = _int("LLM_MAX_RPM", 10)          # in-process requests-per-minute cap for openai_compat (free tiers are rate limited)
+OPENAI_COMPAT_BASE_URL = _str("OPENAI_COMPAT_BASE_URL", "")   # any OpenAI-compatible endpoint: Gemini, Groq, Ollama, ...
+OPENAI_COMPAT_API_KEY = _str("OPENAI_COMPAT_API_KEY", "")
 
 _DEFAULT_MODELS = {
     "anthropic": ("claude-haiku-5-5", "claude-sonnet-5-5"),
     "bedrock": ("", ""),  # env-only: set LIGHT_MODEL_ID / STRONG_MODEL_ID
+    "openai_compat": ("", ""),  # env-only: model names depend on the endpoint (Gemini, Groq, Ollama, ...)
     "mock": ("mock-light", "mock-strong"),
 }
 _light, _strong = _DEFAULT_MODELS.get(LLM_PROVIDER, _DEFAULT_MODELS["mock"])

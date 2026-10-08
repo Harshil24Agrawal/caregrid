@@ -20,8 +20,12 @@ def llmcheck() -> int:
     """One light + one strong complete_json call and one embed call. Never raises on provider errors."""
     from caregrid.llm import get_llm
 
-    print(f"provider={config.LLM_PROVIDER} light={config.LIGHT_MODEL_ID} strong={config.STRONG_MODEL_ID} "
-          f"region={config.AWS_REGION}")
+    where = f"region={config.AWS_REGION}"
+    if config.LLM_PROVIDER == "openai_compat":
+        from urllib.parse import urlparse
+
+        where = f"endpoint={urlparse(config.OPENAI_COMPAT_BASE_URL).netloc or '(OPENAI_COMPAT_BASE_URL not set)'} max_rpm={config.LLM_MAX_RPM}"
+    print(f"provider={config.LLM_PROVIDER} light={config.LIGHT_MODEL_ID or '(unset)'} strong={config.STRONG_MODEL_ID or '(unset)'} {where}")
     try:
         llm = get_llm()
     except Exception as e:  # missing creds / SDK / bad provider

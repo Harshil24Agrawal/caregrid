@@ -4,6 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
+import time
+from collections import deque
 from typing import Literal, Protocol
 
 import numpy as np
@@ -29,7 +32,7 @@ def hashed_embedding(text: str, dim: int = EMBED_DIM) -> list[float]:
 
 def parse_json_tolerant(raw: str) -> dict:
     """Parse model output as a JSON object, tolerating code fences and surrounding prose."""
-    text = raw.strip()
+    text = re.sub(r"<think>.*?</think>", "", raw, flags=re.S | re.I).strip()      # reasoning models (e.g. local r1 builds)
     fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fence:
         text = fence.group(1).strip()
@@ -237,6 +240,121 @@ class AnthropicLLM(_JsonRetryMixin):
         return embed_texts(texts)
 
 
+# ---------------------------------------------------------------- openai-compatible (free tiers, local models)
+JSON_INSTRUCTION = "\n\nRespond with ONE JSON object only. No text before or after it and no markdown code fences."
+RETRY_AFTER_CAP_S = 10.0          # never sleep longer than this on a 429; beyond it the deterministic fallback is faster
+DEFAULT_BACKOFF_S = 2.0
+
+
+class LocalRateLimited(RuntimeError):
+    """The in-process requests-per-minute cap would make the call wait longer than its budget."""
+
+
+class RateLimiter:
+    """Sliding 60-second window. acquire() waits for a free slot, or raises LocalRateLimited if that would exceed max_wait."""
+
+    def __init__(self, max_rpm: int, clock=time.monotonic, sleep=time.sleep) -> None:
+        self.max_rpm, self._clock, self._sleep = max(1, int(max_rpm)), clock, sleep
+        self._stamps: deque[float] = deque()
+        self._lock = threading.Lock()
+
+    def acquire(self, max_wait: float) -> None:
+        while True:
+            with self._lock:
+                now = self._clock()
+                while self._stamps and now - self._stamps[0] >= 60.0:
+                    self._stamps.popleft()
+                if len(self._stamps) < self.max_rpm:
+                    self._stamps.append(now)
+                    return
+                wait = self._stamps[0] + 60.0 - now
+            if wait > max_wait:
+                raise LocalRateLimited(f"local rate limit of {self.max_rpm} requests/minute reached; next slot in {wait:.0f}s")
+            self._sleep(wait)
+
+
+def _retry_after_seconds(err) -> float | None:
+    try:
+        value = err.response.headers.get("retry-after")
+        return float(value) if value is not None else None
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+class OpenAICompatLLM(_JsonRetryMixin):
+    """Any OpenAI-compatible chat endpoint (Gemini's OpenAI endpoint, Groq, Ollama, ...) via the `openai` package.
+
+    Never crashes the caller: configuration problems and provider errors raise from the call, where classify()/propose()
+    catch them and switch to the deterministic path (note `llm_fallback`). embed() follows EMBED_PROVIDER (hashed by default).
+    """
+
+    def __init__(self, client=None, sleep=time.sleep, clock=time.monotonic) -> None:
+        import openai
+
+        self.calls: list[str] = []
+        self._openai, self._sleep = openai, sleep
+        self._json_mode = True                               # flipped off once the endpoint rejects response_format
+        self._limiter = RateLimiter(config.LLM_MAX_RPM, clock=clock, sleep=sleep)
+        self._config_error = None if (client is not None or config.OPENAI_COMPAT_BASE_URL) else \
+            "OPENAI_COMPAT_BASE_URL is not set (refusing to fall back to api.openai.com)"
+        self._client = client
+        if client is None and not self._config_error:
+            self._client = openai.OpenAI(base_url=config.OPENAI_COMPAT_BASE_URL, api_key=config.OPENAI_COMPAT_API_KEY or "not-needed",
+                                         timeout=config.LLM_TIMEOUT_S, max_retries=0)
+
+    # -- transport
+    def _chat(self, system: str, user: str, tier: Tier, want_json: bool) -> str:
+        if self._config_error:
+            raise RuntimeError(self._config_error)
+        model = config.LIGHT_MODEL_ID if tier == "light" else config.STRONG_MODEL_ID
+        if not model:
+            raise RuntimeError(f"{'LIGHT' if tier == 'light' else 'STRONG'}_MODEL_ID is not set")
+        kwargs = {"model": model, "temperature": 0, "max_tokens": 1500,
+                  "messages": [{"role": "system", "content": system + (JSON_INSTRUCTION if want_json else "")},
+                               {"role": "user", "content": user}]}
+        if want_json and self._json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        retried_429 = False
+        while True:
+            self._limiter.acquire(max_wait=max(config.LLM_TIMEOUT_S / 2, 1.0))
+            try:
+                resp = self._client.chat.completions.create(**kwargs)
+                break
+            except self._openai.RateLimitError as e:
+                wait = _retry_after_seconds(e)
+                wait = DEFAULT_BACKOFF_S if wait is None else wait
+                if retried_429 or wait > RETRY_AFTER_CAP_S:
+                    raise
+                retried_429 = True
+                self._sleep(max(wait, 0.0))
+            except (self._openai.BadRequestError, self._openai.UnprocessableEntityError) as e:
+                msg = str(e).lower()
+                if "response_format" in kwargs and ("response_format" in msg or "json" in msg):
+                    self._json_mode = False                  # this endpoint cannot do JSON mode: rely on the prompt + tolerant parser
+                    kwargs.pop("response_format", None)
+                    continue
+                raise
+        return (resp.choices[0].message.content or "") if resp.choices else ""
+
+    # -- LLM protocol
+    def complete_text(self, system: str, user: str, tier: Tier) -> str:
+        self.calls.append(tier)
+        return self._chat(system, user, tier, want_json=False)
+
+    def complete_json(self, system: str, user: str, tier: Tier) -> dict:
+        self.calls.append(tier)
+        err: Exception | None = None
+        for _ in range(2):                                   # one retry on unparseable output, then the caller falls back
+            try:
+                return parse_json_tolerant(self._chat(system, user, tier, want_json=True))
+            except ValueError as e:
+                err = e
+        raise ValueError(f"model did not return valid JSON after retry: {err}")
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return embed_texts(texts)
+
+
 def get_llm() -> LLM:
     provider = config.LLM_PROVIDER
     if provider == "mock":
@@ -245,4 +363,6 @@ def get_llm() -> LLM:
         return BedrockLLM()
     if provider == "anthropic":
         return AnthropicLLM()
-    raise ValueError(f"unknown LLM_PROVIDER {provider!r} (expected mock | bedrock | anthropic)")
+    if provider == "openai_compat":
+        return OpenAICompatLLM()
+    raise ValueError(f"unknown LLM_PROVIDER {provider!r} (expected mock | bedrock | anthropic | openai_compat)")

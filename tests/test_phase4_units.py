@@ -151,6 +151,27 @@ def test_llm_cannot_change_questions_decision_or_team(brain):
     assert all(q in p.answer_text for q in p.questions_for_requester)
 
 
+@pytest.mark.parametrize("answer,steps", [
+    (["1. Review KA-12 for the guidance.", "2. Send the details in one reply."], "Wait for the team"),
+    ("1. Review KA-12 for the guidance.\n2. Send the details in one reply.", ["Wait for the team", "", 7]),
+])
+def test_wording_shapes_small_models_return_are_accepted(brain, answer, steps):
+    c = run_chain(S2, ASHA, brain, MockLLM())
+    llm = Canned(propose={"answer_text": answer, "next_steps": steps, "summary_for_reviewer": ["Needs the missing details.", "Route to Enrollment."]})
+    p = P.propose(c.guard.masked_text, c.cls, c.ret, c.rules, llm)
+    assert p.model_used != "deterministic" and "llm_output_rejected" not in c.rules.notes
+    assert p.answer_text.startswith("1. Review KA-12 for the guidance.\n2. Send the details in one reply.")
+    assert p.next_steps == ["Wait for the team"] and p.summary_for_reviewer == "Needs the missing details.\nRoute to Enrollment."
+
+
+@pytest.mark.parametrize("bad", [{"answer_text": 5, "summary_for_reviewer": "s"}, {"answer_text": [1, 2], "summary_for_reviewer": "s"},
+                                 {"answer_text": "a", "summary_for_reviewer": {"x": 1}}, {"answer_text": "a"}, {"answer_text": " ", "summary_for_reviewer": "s"}])
+def test_wording_of_the_wrong_type_is_rejected_as_malformed(brain, bad):
+    c = run_chain(S2, ASHA, brain, MockLLM())
+    p = P.propose(c.guard.masked_text, c.cls, c.ret, c.rules, Canned(propose=bad))
+    assert p.model_used == "deterministic" and "llm_output_rejected" in c.rules.notes and "llm_reject_reason: malformed" in c.rules.notes
+
+
 def test_context_has_current_policies_workflow_team_and_active_precedents_only(brain):
     c = run_chain(S2, ASHA, brain, MockLLM())
     ctx = P.build_context(c.ret)
