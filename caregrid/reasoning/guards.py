@@ -124,7 +124,8 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
 def check_output(text: str, user: User) -> tuple[bool, str, list[str]]:
     """-> (ok, cleaned, issues). ok is False when anything had to be changed."""
     issues: list[str] = []
-    cleaned, types = anonymize(text, None)
+    # staff first names in our own generated text are legitimate, so the cue-less name pass is off for output
+    cleaned, _ = anonymize(text, None, cueless=False)
     if cleaned != text:
         issues.append("pii_in_output")
     if _MEDICAL_ADVICE.search(cleaned):

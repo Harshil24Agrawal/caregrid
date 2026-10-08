@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from caregrid.ingest.names import STOP_STATIC, mask_cueless_names, stop_terms_from_titles
+
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 # malformed IDs (M + 5..12 digits) are masked too; validity is judged by the guard on the raw text
 MEMBER_ID = re.compile(r"(?<![\w-])M\d{5,12}(?!\w)")
@@ -44,11 +46,31 @@ class Gazetteer:
     addresses: list[str] = field(default_factory=list)
     emails: list[str] = field(default_factory=list)
     phones: list[str] = field(default_factory=list)
+    stop_terms: set[str] = field(default_factory=set)   # business words that are never name parts
 
     def add_name(self, name: str, kind: str) -> None:
         name = " ".join(name.split())
         if name and name not in self.names:
             self.names[name] = kind
+
+
+def _business_terms(data_dir: Path) -> set[str]:
+    """Words from team names, workflow/policy titles, runbook headings and field names (never name parts)."""
+    import csv
+
+    texts: list[str] = []
+    for fname, cols in (("teams.csv", ("name",)), ("knowledge_articles.csv", ("title",)), ("field_definitions.csv", ("field",))):
+        path = data_dir / fname
+        if path.exists():
+            with open(path, encoding="utf-8", newline="") as f:
+                texts += [row[c] for row in csv.DictReader(f) for c in cols]
+    wf = data_dir / "workflows.json"
+    if wf.exists():
+        texts += [w["title"] for w in json.loads(wf.read_text(encoding="utf-8"))]
+    rb = data_dir / "runbooks.md"
+    if rb.exists():
+        texts += re.findall(r"^## RB-\d+ (.+)$", rb.read_text(encoding="utf-8"), re.M)
+    return stop_terms_from_titles(*texts)
 
 
 def build_gazetteer(data_dir: Path) -> Gazetteer:
@@ -68,6 +90,7 @@ def build_gazetteer(data_dir: Path) -> Gazetteer:
             g.phones.append(m["phone"])
             g.emails.append(m["email"])
         g.addresses.extend(data.get("other_addresses", []))
+    g.stop_terms |= _business_terms(Path(data_dir))
     hist = Path(data_dir) / "historical_cases.csv"
     if hist.exists():
         import csv
@@ -111,7 +134,7 @@ def _presidio_persons(text: str) -> list[tuple[int, int]]:
         return []
 
 
-def anonymize(text: str, gazetteer: Gazetteer | None = None) -> tuple[str, list[str]]:
+def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = True) -> tuple[str, list[str]]:
     gaz = gazetteer if gazetteer is not None else default_gazetteer()
     found: set[str] = set()
 
@@ -140,11 +163,14 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None) -> tuple[str, list[
     tokens: dict[str, str] = {}
     counters = {"PROVIDER": 0, "MEMBER": 0, "PERSON": 0}
 
+    firsts: dict[str, str] = {}   # first name -> token of the first full name seen with it
+
     def token(name: str, kind: str) -> str:
         key = " ".join(name.lower().split())
         if key not in tokens:
             counters[kind] += 1
             tokens[key] = f"[{kind}_{counters[kind]}]"
+            firsts.setdefault(key.split()[0], tokens[key])
         return tokens[key]
 
     if gaz.names:
@@ -175,6 +201,11 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None) -> tuple[str, list[
         return f"name{m.group(1)}to {token(m.group(2), 'PERSON')}"
 
     s = NAME_TO.sub(by_name_to, s)
+
+    if cueless:
+        s, changed = mask_cueless_names(s, STOP_STATIC | gaz.stop_terms, lambda n: token(n, "PERSON"), firsts.get)
+        if changed:
+            found.add("PERSON")
 
     spans = _presidio_persons(s)
     for start, end in sorted(spans, reverse=True):
