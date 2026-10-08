@@ -46,8 +46,9 @@ _DEFAULT_MODELS = {
     "mock": ("mock-light", "mock-strong"),
 }
 _light, _strong = _DEFAULT_MODELS.get(LLM_PROVIDER, _DEFAULT_MODELS["mock"])
-LIGHT_MODEL_ID = _str("LIGHT_MODEL_ID", _light)
-STRONG_MODEL_ID = _str("STRONG_MODEL_ID", _strong)
+# The mock provider always reports mock model names, whatever a developer .env says about real models.
+LIGHT_MODEL_ID = _light if LLM_PROVIDER == "mock" else _str("LIGHT_MODEL_ID", _light)
+STRONG_MODEL_ID = _strong if LLM_PROVIDER == "mock" else _str("STRONG_MODEL_ID", _strong)
 # Embeddings are independent of LLM_PROVIDER: similarity thresholds are tuned on "hashed".
 EMBED_PROVIDER = _str("EMBED_PROVIDER", "hashed").lower()  # hashed | bedrock
 EMBED_MODEL_ID = _str("EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
