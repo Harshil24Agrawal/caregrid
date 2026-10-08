@@ -87,7 +87,6 @@ details.fold > .fold-body { padding: 0 20px 18px; }
 .pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; } .pipeline .arrow { color: var(--faint); margin: 0 2px; }
 .pipeline .step { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 13px; color: var(--faint); }
 .pipeline .step.lit { background: var(--green-bg); border-color: #b6e2cb; color: var(--green); font-weight: 600; } .pipeline .step.run { background: var(--blue-bg); border-color: #b8d0f7; color: var(--blue-d); font-weight: 600; }
-.bigstat { font-size: 30px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; } .cmpgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .seg-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--grey-bg); gap: 2px; margin: 6px 0; } .seg-bar span { display: block; height: 100%; background: var(--blue); }
 .seg-bar span.s0 { background: #1d5fd1; } .seg-bar span.s1 { background: #4b85e0; } .seg-bar span.s2 { background: #7aa7f0; } .seg-bar span.s3 { background: #a6c4f5; } .seg-bar span.s4 { background: #c8dafa; }
 .lock { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border: 1px dashed #b9c3d1; border-radius: 8px; background: #f7f8fa; color: var(--muted); font-size: 14px; }

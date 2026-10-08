@@ -1,15 +1,15 @@
-/* Dashboard: one question - what needs me right now? The banner depends on the role. Data: /api/metrics, /api/cases, /api/scorecard, /api/audit,
+/* Dashboard: one question - what needs me right now? The banner depends on the role. Data: /api/metrics, /api/cases, /api/audit,
    and for knowledge admins /api/lint and /api/prs. */
 (async function () {
   var me = await CG.init('index.html');
   var el = document.getElementById('content');
   CG.loading(el, 'Loading the dashboard…');
   var admin = CG.isKnowledgeAdmin();
-  var m, cases, sc, audit, lint = [], prs = [];
+  var m, cases, audit, lint = [], prs = [];
   try {
-    var r = await Promise.all([CG_API.get('/api/metrics'), CG_API.get('/api/cases'), CG_API.get('/api/scorecard'), CG_API.get('/api/audit?limit=2000'),
+    var r = await Promise.all([CG_API.get('/api/metrics'), CG_API.get('/api/cases'), CG_API.get('/api/audit?limit=2000'),
       admin ? CG_API.get('/api/lint') : Promise.resolve([]), admin ? CG_API.get('/api/prs?status=open') : Promise.resolve([])]);
-    m = r[0]; cases = r[1]; sc = r[2]; audit = r[3]; lint = r[4]; prs = r[5];
+    m = r[0]; cases = r[1]; audit = r[2]; lint = r[3]; prs = r[4];
   } catch (e) { CG.fail(e); el.innerHTML = CG.empty('Could not load the dashboard.'); return; }
 
   var c = m.counts, RANK = { critical: 4, high: 3, medium: 2, low: 1 }, role = me.role;
@@ -94,31 +94,12 @@
     '<div class="small"><b>' + CG.esc(oldest.id) + '</b> · ' + CG.esc(CG.shortWhat(oldest.request_type)) + ' · ' + CG.esc(CG.human(oldest.state)) + '</div></a>');
   var attCard = '<div class="card"><div class="card-title"><h2>Needs attention</h2></div>' + (cards.length ? cards.join('') : CG.empty('Nothing needs attention.')) + '</div>';
 
-  // ------------------------------------------------------------ collapsed sections
-  function pct(v) { return v && v.value !== null && v.value !== undefined ? Math.round(v.value) + '%' : 'n/a'; }
-  function evalCard(label, blind, adj, meta) {
-    function stat(name, k) {
-      return '<div><div class="label">' + name + '</div><div class="bigstat">' + pct(blind[k]) + '</div>' + (adj ? '<div class="small muted">adjudicated ' + pct(adj[k]) + '</div>' : '<div class="small muted">&nbsp;</div>') + '</div>';
-    }
-    return '<div class="card" style="margin-top:12px"><div class="card-title"><h3>' + CG.esc(label) + '</h3><span class="small muted">' + CG.esc(meta) + '</span></div><div class="cmpgrid">' +
-      stat('Request type', 'request_type_accuracy') + stat('Routing', 'routing_first_time_right') + stat('Safety', 'safety_pass_rate') + '</div></div>';
-  }
-  var evalHtml = sc.main ? evalCard('Main set (regression gate)', sc.main.metrics, null, sc.main.rows + ' rows · ' + sc.main.llm_provider) : CG.empty('No scorecard yet. Run python -m caregrid.cli eval.');
-  ['mock', 'env'].forEach(function (k) {
-    var h = sc.heldout[k];
-    if (h) evalHtml += evalCard('Held-out, ' + (k === 'env' ? h.llm_provider : 'mock') + ' (blind as written)', h.metrics, h.adjudicated && h.adjudicated.metrics, h.rows + ' rows');
-  });
-  var gap = m.gap_radar.length ? '<div class="tablewrap"><table><thead><tr><th>Request type</th><th>Count</th><th>Est. hours saved</th></tr></thead><tbody>' + m.gap_radar.map(function (g) {
-    return '<tr><td>' + CG.esc(CG.what(g.request_type)) + ' <span class="small muted">' + CG.esc(g.topic || '') + '</span></td><td>' + g.count + '</td><td>' + g.est_hours_saved + ' h</td></tr>'; }).join('') + '</tbody></table></div>' : CG.empty('No recurring knowledge gaps.');
-
   var counts = {};
   audit.events.forEach(function (e) { counts[e.event] = (counts[e.event] || 0) + 1; });
   var lit = CG.STEPS.map(function (s) { return s[1]; }).filter(function (k) { return counts[k] > 0; });
 
   el.innerHTML = '<div class="page-head"><h1>Dashboard</h1><p class="muted">What needs you right now, ' + CG.esc(me.name) + '? You can see ' + m.visible_cases + ' case' + (m.visible_cases === 1 ? '' : 's') + '.</p></div>' +
     banner() + kpis + '<div class="grid g-dash">' + trust + queueCard + attCard + '</div>' +
-    '<details class="fold"><summary>Evaluation</summary><div class="fold-body"><p class="small muted">Blind numbers are scored as written; adjudicated numbers use the reviewed expectations.</p>' + evalHtml + '</div></details>' +
-    '<details class="fold"><summary>Knowledge gap radar</summary><div class="fold-body">' + gap + '</div></details>' +
     '<div class="card" style="margin-top:16px"><div class="card-title"><h2>Pipeline</h2><span class="small muted">events recorded for the cases you can see</span></div>' + CG.pipeline(lit, -1, counts) + '</div>';
 
   CG.$$('tr.click', el).forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.tagName !== 'A') window.location.href = 'case.html?case=' + encodeURIComponent(tr.dataset.id); }; });

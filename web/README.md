@@ -21,7 +21,7 @@ Audit > Messages).
 
 | Page | The one question it answers |
 |---|---|
-| Dashboard | What needs me right now? A role-aware banner (requester: my requests; approvers: only what they can approve; knowledge owner: conflicts, gaps and policy updates; auditor: blocked or denied events), 4 KPIs, trust ladder, my queue, needs-attention cards; evaluation, gap radar and pipeline below. |
+| Dashboard | What needs me right now? A role-aware banner (requester: my requests; approvers: only what they can approve; knowledge owner: conflicts, gaps and policy updates; auditor: blocked or denied events), 4 KPIs, trust ladder, my queue, needs-attention cards; the pipeline below. (Evaluation and gap radar were removed from the page; `/api/scorecard` and `/api/metrics` still serve them.) |
 | New request | What happens to my request? One result card with a headline per state. |
 | Cases | What is going on with this case? List, or one case: why a human, risk, confidence, sources, next step, Decide panel, assistant, evidence / graph / audit / messages tabs. |
 | Knowledge | What does the Second Brain say, and what is wrong with it? Pages with versions (compare), needs attention (lint) and policy updates (PRs); the last two are for knowledge admins only. |
