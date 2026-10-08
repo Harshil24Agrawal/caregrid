@@ -8,7 +8,7 @@ from caregrid import config
 
 # command -> phase that implements it (stubs until then)
 _STUBS: dict[str, int] = {}
-_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", "demo", "eval", *_STUBS]
+_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", "demo", "eval", "check", *_STUBS]
 
 
 def _short_err(e: Exception) -> str:
@@ -177,12 +177,20 @@ def cmd_eval(provider: str = "mock", limit: int | None = None, file: str | None 
     return 1 if card["metrics"]["errors"] else 0
 
 
+def cmd_check(skip_pytest: bool = False) -> int:
+    """The midnight checklist, headless: PASS/FAIL per item, exit 1 on any FAIL."""
+    from caregrid.check import run_check
+
+    return run_check(skip_pytest=skip_pytest)
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="python -m caregrid.cli", description="CareGrid command line")
     parser.add_argument("command", choices=[*_COMMANDS, "llmcheck"])
     parser.add_argument("--limit", type=int, default=None, help="eval only: run just the first N rows (writes a *.partial.* scorecard)")
+    parser.add_argument("--skip-pytest", action="store_true", help="check only: skip the (slow) pytest item")
     parser.add_argument("--file", default=None, help="eval only: CSV to evaluate (default eval/requests_eval.csv); never edited")
     parser.add_argument("--provider", choices=["mock", "env"], default="mock",
                         help="demo/eval only: mock = deterministic offline LLM (default); env = the provider configured in .env")
@@ -202,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_reset()
     if args.command == "demo":
         return cmd_demo(args.provider)
+    if args.command == "check":
+        return cmd_check(args.skip_pytest)
     if args.command == "eval":
         return cmd_eval(args.provider, args.limit, args.file)
     print(f"'{args.command}' is not implemented yet (planned for phase {_STUBS[args.command]}).")
