@@ -170,8 +170,12 @@ def cmd_eval(provider: str = "mock", limit: int | None = None, file: str | None 
     card = run_eval(provider, limit=limit, echo=print, llm=llm, csv_path=csv_path)
     print()
     print(render_table(card))
-    for m in misses(card):
-        print(f"MISS {m['id']}: " + "; ".join(m["why"]) + f"  [decision {m['decision']}, score {m['score']}, reasons want {m['expected_reasons']} got {m['got_reasons']}]")
+    for label, adj in (("blind", False), ("adjudicated", True)):
+        if adj and not card.get("adjudicated"):
+            continue
+        for m in misses(card, adjudicated=adj):
+            print(f"MISS[{label}] {m['id']}: " + "; ".join(m["why"])
+                  + f"  [decision {m['decision']}, score {m['score']}, reasons want {m['expected_reasons']} got {m['got_reasons']}]")
     for path in write_outputs(card):
         print(f"wrote {path.relative_to(config.ROOT) if path.is_relative_to(config.ROOT) else path}")
     return 1 if card["metrics"]["errors"] else 0

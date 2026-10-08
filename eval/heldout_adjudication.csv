@@ -1,0 +1,9 @@
+row,field,original,adjudicated,reason
+HO-12,expected_type,unknown,ANY,Ruling 3: type is not scored for CLINICAL hard overrides; the refusal and routing to TEAM-CLINICAL are what matter
+HO-13,expected_type,unknown,ANY,Ruling 3: type is not scored for CLINICAL hard overrides; the refusal and routing to TEAM-CLINICAL are what matter
+HO-15,expected_type,unknown,claim_status_inquiry,Ruling 2: a status/details inquiry on a CLM id with no personal data requested is the real type (same shape as HO-18)
+HO-15,expected_team,TEAM-COMPLIANCE,TEAM-CLAIMS,Ruling 2: ACCESS_DENIED / TEAM-COMPLIANCE only for requests to disclose personal data; claim status goes to the owning team (KA-25 / KA-45)
+HO-15,expected_reasons,ACCOUNT_SPECIFIC;ACCESS_DENIED,ACCOUNT_SPECIFIC,Ruling 2: no personal data is requested so only ACCOUNT_SPECIFIC applies (found by the rule change: HO-15 passed blind before it)
+HO-16,expected_type,unknown,prior_auth_status,Ruling 2: a status inquiry on a PA id by any staff role is the real type (same shape as HO-17 and EV-27 to EV-29)
+HO-16,expected_team,TEAM-COMPLIANCE,TEAM-UM,Ruling 2: ACCESS_DENIED / TEAM-COMPLIANCE only for requests to disclose personal data; PA status goes to the owning team (KA-25 / KA-45)
+HO-16,expected_reasons,ACCOUNT_SPECIFIC;ACCESS_DENIED,ACCOUNT_SPECIFIC,Ruling 2: no personal data is requested so only ACCOUNT_SPECIFIC applies

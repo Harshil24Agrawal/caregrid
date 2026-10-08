@@ -63,3 +63,29 @@ def test_misses_lists_expected_vs_got():
     ok = dict(row, id="X-2", type_ok=True, route_ok=True, expected_missing=[], missing_found=0)
     out = misses({"results": [row, ok]})
     assert [m["id"] for m in out] == ["X-1"] and "type expected a got b" in out[0]["why"][0]
+
+
+def test_adjudication_is_applied_checked_and_reported_beside_the_blind_score(tmp_path):
+    import csv
+
+    import pytest
+
+    from caregrid.scorecard import adjudicate, render_table, run_eval
+    rows = [r for r in csv.DictReader(open(config.EVAL_DIR / "requests_eval.csv", encoding="utf-8", newline="")) if r["id"] in ("EV-01", "EV-12")]
+    csv_path = tmp_path / "ds.csv"
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    adj = tmp_path / "ds_adjudication.csv"
+    wrong = rows[0]["expected_type"]
+    adj.write_text(f"row,field,original,adjudicated,reason\n{rows[0]['id']},expected_type,{wrong},ANY,type not scored\n", encoding="utf-8")
+    card = run_eval("mock", csv_path=csv_path)
+    assert card["adjudicated"]["rows_adjudicated"] == [rows[0]["id"]] and card["adjudicated"]["metrics"]["request_type_accuracy"]["den"] == 2
+    text = render_table(card)
+    assert "[blind (as written)]" in text and "[adjudicated:" in text
+    # a stale adjudication (original does not match the dataset) is an error, never silently applied
+    with pytest.raises(ValueError):
+        adjudicate(rows[0], [{"row": rows[0]["id"], "field": "expected_type", "original": "nope", "adjudicated": "x", "reason": ""}])
+    with pytest.raises(ValueError):
+        adjudicate(rows[0], [{"row": rows[0]["id"], "field": "id", "original": rows[0]["id"], "adjudicated": "x", "reason": ""}])
