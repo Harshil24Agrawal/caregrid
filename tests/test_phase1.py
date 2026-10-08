@@ -50,7 +50,7 @@ def test_only_p88_is_stale(built):
 def test_page_layout_and_counts(built):
     c = built["counts"]
     assert c["policy"] == 21 and c["workflow"] == 8 and c["team"] == 8 and c["regulatory"] == 2
-    assert c["precedent"] == 40 and c["field"] == 14 and c["runbook"] == 4
+    assert c["precedent"] == 40 and c["field"] == 15 and c["runbook"] == 4
     b = built["brain"]
     for rel in ("index.md", "log.md", "regulatory/REG-HIPAA.md", "regulatory/REG-DPDP.md", "runbook/RB-07.md",
                 "field/FIELD-NPI.md", "config/routing_rules.csv"):

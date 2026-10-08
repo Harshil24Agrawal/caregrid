@@ -84,7 +84,7 @@ def test_authored_pages_are_unchanged_by_masking(tmp_path):
             body = read_page_file(f)[1]
             assert anonymize(body, gaz)[0] == body, f.name
             checked += 1
-    assert checked == 21 + 8 + 8 + 14 + 4 + 2
+    assert checked == 21 + 8 + 8 + 15 + 4 + 2
 
 
 def test_precedent_summaries_have_no_known_names_after_compile(tmp_path):

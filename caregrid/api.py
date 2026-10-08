@@ -43,6 +43,7 @@ from caregrid.reasoning.pipeline import run
 from caregrid.seed import load_users
 from caregrid.store import SQLiteStore
 from caregrid.workflow import assistant as assistant_mod
+from caregrid.workflow import patients as patients_mod
 from caregrid.workflow.audit import log as audit_log
 from caregrid.workflow.decisions import DECIDABLE, AlreadyDecidedError, submit_decision
 from caregrid.workflow.prs import PRStateError, decide_pr
@@ -271,6 +272,7 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
         "reviewer": None,
         "evidence": evidence(case, user, brain),
         "guidance": workflow_guidance(case, brain, store.list_audit(case.id)),
+        "patient": patients_mod.case_patient(case, user, store, config.DATA_DIR),
         "actions": approval_gate(user, case),
     }
     if prop:
@@ -611,6 +613,59 @@ def api_pr_decision(pr_id: str, body: PRDecisionIn, user: User = Depends(actor))
     except KeyError as e:
         raise HTTPException(status_code=404, detail="Unknown PR.") from e
     return scrub(pr_row(pr), user)
+
+
+@app.get("/api/demo/samples")
+def api_demo_samples(user: User = Depends(actor)):
+    """Demo mode only: a synthetic Health ID (and the same ID with a wrong last digit) so scenario S8 can be clicked. 404 outside demo mode."""
+    if not demo_mode():
+        raise HTTPException(status_code=404, detail="Not available.")
+    from caregrid import health_id
+
+    member = next((m for m in health_id._members(config.DATA_DIR) if m.get("health_id")), None)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Not available.")
+    good = member["health_id"]
+    wrong = good[:-1] + str((int(good[-1]) + 1) % 10)
+    return {"health_id_valid": good, "health_id_wrong_checksum": wrong}
+
+
+# ------------------------------------------------------------------ patients (CareGrid Health ID)
+@app.get("/api/patients")
+def api_patients(user: User = Depends(actor)):
+    """The patients this user may open (masked ids). Nothing here is derived from personal details."""
+    return scrub(patients_mod.patients_for(user, get_store(), config.DATA_DIR), user)
+
+
+@app.get("/api/patients/{ref}")
+def api_patient(ref: str, user: User = Depends(actor)):
+    """ref = a Health ID (CG-XXXX-XXXX-XXXX) or the profile key a case links to. A wrong checksum is 422; an unknown id and an id the caller may
+    not open give the SAME 404, so the endpoint is no existence oracle. Every successful view is audited (record_viewed)."""
+    try:
+        rec = patients_mod.record(ref, user, get_store(), config.DATA_DIR)
+    except patients_mod.BadHealthId as e:
+        raise HTTPException(status_code=422, detail="The Health ID does not pass its checksum. Please re-check the digits.") from e
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Unknown patient.")
+    return scrub(rec, user)
+
+
+class RevealIn(BaseModel):
+    case_id: str = Field(min_length=1, max_length=40)
+    reason: str = Field(default="", max_length=300)
+
+
+@app.post("/api/patients/{ref}/reveal")
+def api_patient_reveal(ref: str, body: RevealIn, user: User = Depends(actor)):
+    """Name, phone and date of birth for ONE linked case: senior reviewers only, reason mandatory, audited as record_revealed, never stored."""
+    try:
+        return patients_mod.reveal(ref, user, body.case_id, body.reason, get_store(), config.DATA_DIR)      # deliberately not scrubbed: that is the point
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Unknown patient.") from e
+    except patients_mod.BadHealthId as e:
+        raise HTTPException(status_code=422, detail="The Health ID does not pass its checksum.") from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 # ------------------------------------------------------------------ comms, audit

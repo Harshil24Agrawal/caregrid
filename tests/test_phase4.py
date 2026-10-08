@@ -379,7 +379,7 @@ def test_demo_harness_passes_on_the_mock_provider(paths, brain, capsys):
     lines = []
     assert run_demo(SQLiteStore(":memory:"), brain, MockLLM(), paths / "data", echo=lines.append) == 0
     out = "\n".join(lines)
-    assert "10/10 scenarios passed" in out and "FAIL" not in out
+    assert "11/11 scenarios passed" in out and "FAIL" not in out
     for key in ("S1", "S2", "S3", "S4a", "S4b", "CASE-1024", "S5", "S6.1", "S6.2"):
         assert f"=== {key}:" in out
 
@@ -426,7 +426,7 @@ def test_cli_demo_and_reset(paths, tmp_path, monkeypatch, capsys):
     assert leak_scan_store(store, tmp_path / "data") == []
     assert main(["leakscan"]) == 0
 
-    assert main(["demo"]) == 0 and "10/10 scenarios passed" in capsys.readouterr().out
+    assert main(["demo"]) == 0 and "11/11 scenarios passed" in capsys.readouterr().out
     assert len(SQLiteStore().list_cases()) == 21                  # the demo never touches the real database
     assert main(["reset"]) == 0 and len(SQLiteStore().list_cases()) == 21     # reset is repeatable
 

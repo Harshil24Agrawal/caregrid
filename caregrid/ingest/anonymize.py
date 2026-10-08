@@ -24,6 +24,8 @@ EMAIL = re.compile(
     r"(?<![A-Za-z0-9_%+-])" + _L + r"(?:[ \t]*\.[ \t]*" + _L + r"){0,5}[ \t]*@[ \t]*" + _D + r"(?:[ \t]*\.[ \t]*" + _D + r"){1,5}")
 # malformed IDs (M + 5..12 digits, optional '-' or space) are masked too; validity is judged by the guard on the raw text
 MEMBER_ID = re.compile(r"(?i)(?<![\w-])m[- ]?\d{5,12}(?!\w)")
+# CareGrid Health ID in any typing (CG-1234-5678-9012, CG 1234 5678 9012, CG123456789012) and any malformed CG- number; the guard judges validity on the raw text
+HEALTH_ID = re.compile(r"(?i)(?<![\w-])CG(?:[- ]?\d{4}){3}(?!\w)|(?<![\w-])CG-\d[\d -]{1,18}\d(?!\w)")
 # more member-id shapes: MBR12345678, MEM-AB12345, "member id: 12345678"
 MEMBER_ID_VARIANTS = re.compile(
     r"(?i)(?<![\w-])(?:(?:MBR|MEM)[- ]?(?=[A-Z0-9]*\d)[A-Z0-9]{5,14}|member\s*(?:id|no\.?|number|#)\s*[:#-]?\s*\d{5,12})(?!\w)")
@@ -212,6 +214,7 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
         s = ISO_DATE.sub(stash, s)
 
     s = sub(EMAIL, "[EMAIL]", s, "EMAIL", _AT)
+    s = sub(HEALTH_ID, "[HEALTH_ID]", s, "HEALTH_ID", _DIGIT)
     s = sub(MEMBER_ID, "[MEMBER_ID]", s, "MEMBER_ID", _DIGIT)
     s = sub(MEMBER_ID_VARIANTS, "[MEMBER_ID]", s, "MEMBER_ID", _DIGIT)
     s = sub(NPI_CONTEXT, lambda m: m.group(1) + "[NPI]", s, "NPI", _DIGIT)

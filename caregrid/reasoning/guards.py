@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
+from caregrid import config, health_id
 from caregrid.ingest.anonymize import DOB, EMAIL, NPI_CONTEXT, PROVIDER_NPI, Gazetteer, anonymize
 from caregrid.ingest.names import AMBIGUOUS, CAP_WORD, STOP_STATIC, first_names
 from caregrid.ingest.normalize import collapse_letters, fold_leet, iso_effective_dates, normalize_text
@@ -141,6 +142,8 @@ def validate_ids(raw: str) -> dict[str, str]:
         out["npi"] = "valid" if bad is None else f"invalid: {bad} digits"
     if m := re.search(r"(?<![\w-])M[- ]?(\d{4,})(?!\w)", raw):
         out["member_id"] = "valid" if len(m.group(1)) == 8 else f"invalid: {len(m.group(1))} digits after M (expected 8)"
+    if (hid := health_id.validate(raw)) is not None:
+        out["health_id"] = hid
     if m := re.search(r"\bPA-[\d-]+", raw):
         out["auth_id"] = "valid" if re.fullmatch(r"PA-\d{4}-\d{5}", m.group(0)) else "invalid: expected PA-YYYY-NNNNN"
     if m := re.search(r"\bCLM-\d+", raw):
@@ -235,7 +238,8 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
     if too_long:
         masked += " [truncated]"
     return GuardResult(allowed=allowed, masked_text=masked, pii_types_found=pii_types, overrides=overrides,
-                       injection=injection, validated_fields=validated, notes=notes)
+                       injection=injection, validated_fields=validated, notes=notes,
+                       patient_key=health_id.linked_profile(norm, config.DATA_DIR) if allowed else None)
 
 
 # ------------------------------------------------------------------ output guard

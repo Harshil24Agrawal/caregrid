@@ -9,6 +9,12 @@
     ['S3 · Policies disagree', 'A clinic staff member is locked out of the provider portal, email staff@clinic.example, provider NPI 1234567890. Can we reset it?']
   ];
 
+  try {                                                // demo mode only: sample Health IDs from the server (synthetic data), so S8 can be clicked
+    var samples = await CG_API.get('/api/demo/samples');
+    EXAMPLES.push(['S8 · Health ID', 'What supporting documents are accepted for provider record changes? Patient ' + samples.health_id_valid + '.']);
+    EXAMPLES.push(['S8 · Wrong ID', 'What supporting documents are accepted for provider record changes? Patient ' + samples.health_id_wrong_checksum + '.']);
+  } catch (e) { /* not in demo mode: no sample chips */ }
+
   el.innerHTML = '<div class="page-head"><h1>New request</h1><p class="muted">Type what you need. Personal data is masked on the server before anything is stored or sent to a model.</p></div>' +
     '<div class="card"><label for="req-text" class="sr-only">Request</label><textarea id="req-text" rows="7" placeholder="Describe the request…"></textarea>' +
     '<div class="flex" style="margin-top:10px"><button id="submit" class="btn primary" type="button" disabled>Submit</button><label class="small muted" for="req-channel">Channel</label><select id="req-channel" aria-label="Channel"><option>portal</option><option>email</option><option>whatsapp</option><option>sms</option></select><span id="counter" class="small muted mono">0 / ' + MAX + '</span>' +
@@ -47,9 +53,10 @@
     else body = '<div style="margin:4px 0">' + CG.reasonChips(c.reason_codes) + '</div>' + (c.approver_role ? '<p class="small muted">Needs a ' + CG.esc(CG.role(c.approver_role).toLowerCase()) + ' to decide.</p>' : '');
     var pii = c.pii_types.length ? '<div class="row"><div class="label">Masked</div><div>' + c.pii_types.map(function (t) { return '<span class="chip grey">' + CG.esc(CG.piiLabel(t)) + '</span>'; }).join('') + '</div></div>' :
       '<div class="row"><div class="label">Masked</div><div class="muted">No personal data found.</div></div>';
+    var patient = c.patient ? '<div class="row"><div class="label">Patient</div><div><a href="patients.html?ref=' + encodeURIComponent(c.patient.ref) + '"><span class="mono">' + CG.esc(c.patient.masked_id) + '</span> · linked, open the record</a></div></div>' : '';
     var src = (p.citations || []).length ? '<div class="row"><div class="label">Sources</div><div>' + p.citations.map(CG.citationChip).join('') + '</div></div>' : '';
     return '<div class="headline ' + h[0] + '">' + CG.esc(h[1]) + '</div>' + body + '<div class="rows" style="margin-top:12px">' + pii +
-      '<div class="row"><div class="label">Confidence</div><div>' + (CG.band(c.confidence) || '<span class="muted">not scored</span>') + '</div></div>' + src + '</div>' +
+      '<div class="row"><div class="label">Confidence</div><div>' + (CG.band(c.confidence) || '<span class="muted">not scored</span>') + '</div></div>' + src + patient + '</div>' +
       '<div class="flex" style="margin-top:14px"><a class="btn primary" href="case.html?case=' + encodeURIComponent(c.id) + '">Open case ' + CG.esc(c.id) + '</a></div>';
   }
 

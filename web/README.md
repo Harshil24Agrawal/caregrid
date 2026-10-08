@@ -16,7 +16,7 @@ in a tooltip ("Policies disagree" = POLICY_CONFLICT).
 
 Header on every page: provider pill, PHI masked count (masked tokens such as [PERSON_1], [NPI], [PHONE] in the cases you can see; computed by the API, values never stored), demo login
 switcher (the acting user is sent as the `X-CareGrid-User` header; NOT real authentication) and, for ops managers and senior reviewers in demo mode only, Reset demo (with confirmation).
-Nav: Dashboard · New request · Cases · Knowledge · Audit. The old `approval.html` and `comms.html` redirect (to the case's Decide panel and to
+Nav: Dashboard · New request · Cases · Patients · Knowledge · Audit. The old `approval.html` and `comms.html` redirect (to the case's Decide panel and to
 Audit > Messages).
 
 | Page | The one question it answers |
@@ -24,6 +24,7 @@ Audit > Messages).
 | Dashboard | What needs me right now? A role-aware banner (requester: my requests; approvers: only what they can approve; knowledge owner: conflicts, gaps and policy updates; auditor: blocked or denied events), 4 KPIs, trust ladder, my queue, needs-attention cards; the pipeline below. (Evaluation and gap radar were removed from the page; `/api/scorecard` and `/api/metrics` still serve them.) |
 | New request | What happens to my request? One result card with a headline per state. |
 | Cases | What is going on with this case? List, or one case: why a human, risk, confidence, sources, next step, Decide panel, assistant, evidence / graph / audit / messages tabs. |
+| Patients | Who is this patient, and what happened to their requests? Masked Health ID, plan, consent, a role-filtered timeline; senior reviewers may reveal name, phone and date of birth for one linked case with a reason (audited); auditors see the access log. |
 | Knowledge | What does the Second Brain say, and what is wrong with it? Pages with versions (compare), needs attention (lint) and policy updates (PRs); the last two are for knowledge admins only. |
 | Audit | What happened, and who did it? Log with plain-word events; Messages tab with "simulated" tags. |
 
@@ -38,6 +39,8 @@ Audit > Messages).
 | **S5** | Rahul -> Cases -> CASE-1024 -> assistant "Why is this case flagged?" (cites KA-40 and INV-1024) -> Decide: More options -> tick Email + WhatsApp, enter a contact e-mail -> Submit decision (state path, precedent, trust). Audit > Messages lists both (simulated). Switch to Asha -> same case: amount hidden, evidence locked, "What is the amount?" answers ACCESS RESTRICTED, Decide explains why she can't. |
 | **S6** | Asha submits the name-change request (confidence 60). Vikram -> case -> Decide -> Submit. Asha submits the second name change -> 75, citing the new precedent in Sources. Dashboard -> trust ladder shows the streak. |
 | **S7** | Asha submits S3. Kiran -> case -> Decide -> More options -> "Propose a change to a policy", KA-32, "Retire this policy" -> Submit. Meera -> Knowledge -> Policy updates -> Approve. Needs attention is now clear; Asha submits S3 again: no "Policies disagree". |
+| **S8** | Asha -> New request -> chip "S8 · Health ID" -> Submit: answered, "Patient CG-XXXX-XXXX-nnnn · linked"; click it: the patient timeline lists the case. Chip "S8 · Wrong ID": "Need 1 more detail" asking her to re-check the Health ID, not linked. Rahul -> Patients -> open -> Reveal personal details (reason required); Arjun -> Patients: access log. |
+| **How-to** | Asha -> New request -> "How do I change a provider's billing address?": numbered steps from WF-03, cites WF-03 and KA-12. Every case page shows Summary, "How this is handled" (steps done / now / next) and "Why this decision" (each claim and its source; Open scrolls the Knowledge page to the section). |
 
 ## Tests
 

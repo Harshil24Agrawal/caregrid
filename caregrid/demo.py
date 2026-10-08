@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from caregrid import health_id
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.lint import lint
 from caregrid.llm import LLM, pace
@@ -21,6 +22,7 @@ from caregrid.reasoning.guards import check_output
 from caregrid.reasoning.pipeline import run
 from caregrid.seed import load_users, seed_demo_case, seed_trust
 from caregrid.store import Store
+from caregrid.workflow import patients as patients_mod
 from caregrid.workflow.decisions import submit_decision
 from caregrid.workflow.prs import decide_pr
 
@@ -59,6 +61,11 @@ def _stored_blob(store: Store, case: Case) -> str:
     audit = " ".join(e.model_dump_json() for e in store.list_audit(case.id))
     text = json.dumps(json.loads(case.model_dump_json()), ensure_ascii=False) + " " + audit
     return _VOLATILE.sub("", text)          # timestamps / random audit ids can contain any digit run and would fake a "leak"
+
+
+def _pii_types(store: Store, case: Case) -> set[str]:
+    ev = next((e for e in store.list_audit(case.id) if e.event == "request_received"), None)
+    return set(ev.details.get("pii_types", [])) if ev else set()
 
 
 def _has_event(store: Store, case: Case, name: str) -> bool:
@@ -241,6 +248,31 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("lint: CONTRADICTION gone", not contradiction()),
         ("new portal request: no conflict, no_conflict == 10", c.rules.conflicts == [] and c.confidence.breakdown.get("no_conflict") == 10),
         ("no POLICY_CONFLICT reason", ReasonCode.POLICY_CONFLICT not in c.reason_codes)])
+
+    # ---- S8: a CareGrid Health ID links the case to the patient; a wrong checksum is sent back to be re-checked
+    member = next(m for m in health_id._members(data_dir) if m["profile_key"] == "PRF-2001")
+    good = member["health_id"]
+    wrong = good[:-1] + str((int(good[-1]) + 1) % 10)
+    ask = "What supporting documents are accepted for provider record changes? Patient {}."
+    linked, unlinked = go(ask.format(good), asha), go(ask.format(wrong), asha)
+    rahul = users["U4"]
+    seen_by_rahul = {r["case_id"] for r in (patients_mod.record("PRF-2001", rahul, store, data_dir) or {"timeline": []})["timeline"]}
+    seen_by_asha = {r["case_id"] for r in (patients_mod.record("PRF-2001", asha, store, data_dir) or {"timeline": []})["timeline"]}
+    blob = _stored_blob(store, linked) + _stored_blob(store, unlinked)
+    digits = good.replace("CG-", "").replace("-", "")
+    add("S8", "CareGrid Health ID: linked to the patient / wrong checksum re-checked", linked, [
+        ("valid ID: masked as [HEALTH_ID] before anything is stored", "[HEALTH_ID]" in linked.masked_text and "HEALTH_ID" in _pii_types(store, linked)),
+        ("valid ID: case linked to the patient (related.profile = PRF-2001) and audited", linked.related.get("profile") == ["PRF-2001"]
+         and _has_event(store, linked, "patient_linked")),
+        ("valid ID: the case is on the patient timeline (Rahul: full; Asha: her own case)", linked.id in seen_by_rahul and linked.id in seen_by_asha),
+        ("every record view is audited (record_viewed)", any(e.event == "record_viewed" for e in store.list_audit(None))),
+        ("wrong checksum: needs_info, the Health ID is an invalid field, the requester is asked to re-check it",
+         unlinked.state == State.NEEDS_INFO and "health_id" in unlinked.rules.invalid_fields
+         and any("Health ID" in q for q in unlinked.proposal.questions_for_requester)),
+        ("wrong checksum: NOT linked and not on any timeline", unlinked.related.get("profile") is None and unlinked.id not in seen_by_rahul),
+        ("neither Health ID (nor its digits) is stored anywhere", good not in blob and wrong not in blob and digits not in blob.replace("-", "")
+         and wrong.replace("CG-", "").replace("-", "") not in blob.replace("-", "")),
+        ("leak scan of the store: 0 findings", leak_scan_store(store, data_dir) == [])])
     return out
 
 

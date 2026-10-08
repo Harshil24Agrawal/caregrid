@@ -46,6 +46,9 @@ def main() -> None:
     c.post(f"/api/cases/{s3}/decision", headers=H("U7"), json={"action": "approve", "propose_pr": True, "note": "KA-32 is superseded by KA-31; retire it.",
                                                                 "meta_changes": {"retire": True, "target_page": "KA-32"}})
     c.post("/api/requests", headers=H("U1"), json={"text": S3})                       # a case waiting for review again
+    hid = c.get("/api/demo/samples", headers=H("U1")).json()["health_id_valid"]
+    c.post("/api/requests", headers=H("U1"), json={"text": f"{S1} Patient {hid}."})   # S8: linked to a patient, so the timeline has a new row
+    c.post("/api/requests", headers=H("U1"), json={"text": "How do I change a provider's billing address?"})   # a how-to answered from WF-03
 
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -62,7 +65,8 @@ def main() -> None:
     pages = [("dashboard", "/index.html", ".kpi"), ("new-request", "/intake.html", "#req-text"), ("cases", "/case.html", "#rows"),
              ("case-CASE-1024", "/case.html?case=CASE-1024", "#tab-body"), ("knowledge-pages", "/knowledge.html?page=KA-12&v=3", "#pdetail .card h2"),
              ("knowledge-attention", "/knowledge.html?tab=lint", "#body .card"), ("knowledge-changes", "/knowledge.html?tab=prs", "#body .card"),
-             ("audit-log", "/audit.html", "#table table"), ("audit-messages", "/audit.html?tab=messages", "#msgs")]
+             ("audit-log", "/audit.html", "#table table"), ("audit-messages", "/audit.html?tab=messages", "#msgs"),
+             ("patients", "/patients.html", "#lookup"), ("patient-record", "/patients.html?ref=PRF-2001", "#content .card")]
     with sync_playwright() as p:
         b = p.chromium.launch(channel="chrome", headless=True)
         for uid, who in (("U1", "asha"), ("U4", "rahul"), ("U5", "meera")):

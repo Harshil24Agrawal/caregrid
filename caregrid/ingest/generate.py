@@ -63,6 +63,8 @@ FIELD_DEFS = [
      r"^(W-9|bank_letter|licence_copy)$", "W-9", "false"),
     ("provider_npi", "Alias of npi used by the portal reset workflow", r"^\d{10}$", "1234567890", "false"),
     ("prescription_on_file", "Whether a prescription is on file (yes/no)", r"^(yes|no)$", "yes", "false"),
+    ("health_id", "CareGrid Health ID of the patient: CG-XXXX-XXXX-XXXX, 12 digits, the last one a checksum digit", r"^CG-\d{4}-\d{4}-\d{4}$",
+     "CG-XXXX-XXXX-XXXX", "true"),
 ]
 
 WORKFLOWS = [
@@ -286,6 +288,34 @@ def _profiles(g: _Gen) -> dict:
     return {"providers": providers, "members": members, "other_addresses": others}
 
 
+# Consent flags per member (deterministic, so the demo is repeatable): who may see a patient's cases across teams, and how they may be contacted.
+CONSENTS = [
+    {"share_across_teams": True, "contact_by_whatsapp": True, "contact_by_email": True},
+    {"share_across_teams": False, "contact_by_whatsapp": False, "contact_by_email": True},
+    {"share_across_teams": True, "contact_by_whatsapp": False, "contact_by_email": True},
+]
+
+
+def _assign_health_ids(prof: dict, seed: int) -> None:
+    """One random Health ID per member from its OWN seeded generator (nothing about the person goes in; the other generated data stays unchanged)."""
+    from caregrid import health_id
+
+    rng = random.Random(seed * 7919 + 17)
+    used: set[str] = set()
+    for i, m in enumerate(prof["members"]):
+        hid = health_id.generate(rng)
+        while hid in used:
+            hid = health_id.generate(rng)
+        used.add(hid)
+        m["health_id"] = hid
+        m["consent"] = dict(CONSENTS[i % len(CONSENTS)])
+
+
+# seeded cases that concern a patient: id -> member profile key (CASE-1024 is linked by _seed_cases)
+SEED_PATIENT_LINKS = {"REQ-0005": "PRF-2001", "REQ-0018": "PRF-2001", "REQ-0011": "PRF-2002", "REQ-0017": "PRF-2002",
+                      "REQ-0006": "PRF-2003", "REQ-0012": "PRF-2003"}
+
+
 # ------------------------------------------------------------------ historical cases
 def _historical(g: _Gen, prof: dict) -> list[list]:
     P, M = prof["providers"], prof["members"]
@@ -436,6 +466,8 @@ def _seed_cases(g: _Gen, demo_member_key: str) -> list[dict]:
                           else g.rng.randint(1, 40)),
             "assigned_team": team, "risk": "medium" if rt == "complaint_grievance" else "low", "related": {},
         })
+        if cases[-1]["id"] in SEED_PATIENT_LINKS:
+            cases[-1]["related"] = {"profile": [SEED_PATIENT_LINKS[cases[-1]["id"]]]}
     return cases
 
 
@@ -554,6 +586,7 @@ def generate(out_dir: Path, seed: int = 42, eval_dir: Path | None = None) -> Non
     write_text(out_dir / "runbooks.md", RUNBOOKS_MD)
 
     prof = _profiles(g)
+    _assign_health_ids(prof, seed)
     _json(out_dir / "profiles.json", prof)
 
     hist_cols = ["id", "request_type", "raw_text", "facts_json", "fields_provided", "decision_code", "route_team",

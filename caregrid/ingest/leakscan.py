@@ -22,7 +22,7 @@ VERSIONED_FILE = re.compile(r"@v\d+\.md")
 _ORG_MAILBOX = "ORGMAILBOX"
 
 MESSAGES = {
-    "EMAIL": "email address", "MEMBER_ID": "member ID", "NPI": "NPI number", "PHONE": "phone number",
+    "EMAIL": "email address", "MEMBER_ID": "member ID", "HEALTH_ID": "CareGrid Health ID", "NPI": "NPI number", "PHONE": "phone number",
     "ID": "long ID number", "CARD": "card number", "DATE_OF_BIRTH": "date of birth", "ADDRESS": "address",
     "PERSON": "person name",
 }

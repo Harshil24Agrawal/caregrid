@@ -117,13 +117,14 @@ def test_every_page_loads_for_every_role_without_errors(web):
         web.as_user(uid)
         for path, sel in (("/index.html", ".kpi"), ("/intake.html", "#req-text"), ("/case.html", "#rows"), ("/case.html?case=CASE-1024", "#content .card"),
                           ("/knowledge.html", "#plist a"), ("/knowledge.html?tab=lint", "#content .card"), ("/knowledge.html?tab=prs", "#content .card"),
-                          ("/audit.html", "#table"), ("/audit.html?tab=messages", "#content .card")):
+                          ("/audit.html", "#table"), ("/audit.html?tab=messages", "#content .card"), ("/patients.html", "#lookup"),
+                          ("/patients.html?ref=PRF-2001", "#content .card")):
             p = web.go(path, sel)
             assert "Traceback" not in text(p), (uid, path)
         header = text(web.page, "header.topbar")
         assert "LLM: Mock (offline)" in header and "PHI masked" in header and "Demo login" in header and "Healthcare Operations Second Brain" in header
         assert ("Reset demo" in header) == (uid in ("U3", "U4"))             # only ops managers and senior reviewers (DEMO_MODE=1)
-        assert [a.inner_text() for a in web.page.query_selector_all("nav.navstrip a")] == ["Dashboard", "New request", "Cases", "Knowledge", "Audit"]
+        assert [a.inner_text() for a in web.page.query_selector_all("nav.navstrip a")] == ["Dashboard", "New request", "Cases", "Patients", "Knowledge", "Audit"]
 
 
 def test_old_urls_redirect(web):
@@ -400,3 +401,49 @@ def test_assistant_reply_shows_a_sources_line(web):
     p.click("#assistant [data-q='Why is this case flagged?']")
     p.wait_for_selector("#chat .sources", timeout=T)
     assert "second_brain/policy/KA-40@v1.md" in text(p, "#chat .sources")
+
+
+def test_s8_health_id_links_the_case_and_a_wrong_id_is_sent_back(web):
+    web.as_user("U1")
+    p = web.go("/intake.html", "#examples button")
+    p.click("#examples button:has-text('S8 · Health ID')")
+    p.click("#submit")
+    p.wait_for_selector("#run a.btn.primary", timeout=T)
+    assert "Answered automatically" in text(p, "#run") and "CG-XXXX-XXXX-" in text(p, "#run")
+    assert not re.search(r"CG-\d", text(p, "#content"))                              # the typed ID is cleared and never echoed
+    cid = case_id_of(p)
+    p.click("#run a:has-text('linked')")
+    p.wait_for_selector("table", timeout=T)
+    assert "CG-XXXX-XXXX-" in text(p, "h1") and cid in text(p, "#content")
+    assert "Name, phone and date of birth are never shown" in text(p, "#content")
+    # the wrong-checksum example: asked to re-check, not linked
+    p = web.go("/intake.html", "#examples button")
+    p.click("#examples button:has-text('S8 · Wrong ID')")
+    p.click("#submit")
+    p.wait_for_selector("#run a.btn.primary", timeout=T)
+    run = text(p, "#run")
+    assert "Need 1 more detail" in run and "Health ID" in run and "linked" not in run
+    # Rahul: full timeline, reveal needs a reason and is shown once; Arjun: access log
+    web.as_user("U4")
+    p = web.go("/patients.html?ref=PRF-2001", "#reveal-box")
+    assert cid in text(p, "#content")
+    p.click("#reveal-box summary")
+    p.fill("#rv-reason", "short")
+    p.click("#rv-go")
+    p.wait_for_selector("#rv-out .callout.red", timeout=T)
+    p.fill("#rv-reason", "Verify identity before approving the equipment request.")
+    p.click("#rv-go")
+    p.wait_for_selector("#rv-out .callout.amber", timeout=T)
+    assert "Shown for" in text(p, "#rv-out") and p.input_value("#rv-reason") == ""
+    web.as_user("U6")
+    p = web.go("/patients.html?ref=PRF-2001", "#content .card")
+    log = text(p, "#content").upper()
+    assert "ACCESS LOG" in log and "PERSONAL DETAILS REVEALED" in log and "TIMELINE" not in log
+    web.as_user("U5")
+    p = web.go("/patients.html?ref=PRF-2001", "#content .card")
+    assert "No patient found" in text(p, "#content")
+    p = web.go("/patients.html", "#lookup")
+    p.fill("#hid", "CG-0000-0000-0000")
+    p.press("#hid", "Enter")
+    p.wait_for_function("document.getElementById('lookup-msg').textContent.length > 0", timeout=T)
+    assert p.input_value("#hid") == "" and "checksum" in text(p, "#lookup-msg")

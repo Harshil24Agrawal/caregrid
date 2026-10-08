@@ -33,6 +33,7 @@ FORMAT_HINT = {
     "estimated_cost_inr": "digits only, in rupees", "new_address": "street, city and PIN code",
     "old_name": "full legal name", "new_name": "full legal name",
     "supporting_document": "one of W-9, bank letter or licence copy", "prescription_on_file": "yes or no",
+    "health_id": "CG-XXXX-XXXX-XXXX, 12 digits; please check each digit",
 }
 
 

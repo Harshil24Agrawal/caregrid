@@ -28,7 +28,8 @@ FIELD_LABEL = {"npi": "NPI", "provider_npi": "NPI", "member_id": "member ID", "a
                "effective_date": "effective date", "user_email": "user email", "equipment_code": "equipment code",
                "estimated_cost_inr": "estimated cost", "new_address": "new address", "old_name": "old name",
                "new_name": "new name", "supporting_document": "supporting document",
-               "prescription_on_file": "prescription on file"}
+               "prescription_on_file": "prescription on file", "health_id": "Health ID"}
+PROBLEM = {"checksum": "the check digit does not match", "format": "unexpected format"}      # plain words for a validated_fields flag
 NOTE_LABEL = {"supporting_document": "document"}   # human wording inside stale-precedent notes
 FIELD_ALIAS = {"provider_npi": "npi", "npi": "provider_npi"}
 
@@ -77,6 +78,8 @@ def apply_rules(cls: Classification, ret: RetrievalResult, brain: Brain, guard: 
 
     # ---- fields -----------------------------------------------------------------
     required = list(meta.get("required_fields", []))
+    if str(guard.validated_fields.get("health_id", "")).startswith("invalid") and "health_id" not in required:
+        required.append("health_id")                 # a Health ID that was given but is wrong must be re-sent, whatever the workflow
     res.required_fields = required
     have = {k for k, v in cls.extracted_fields.items() if v}
     have |= {FIELD_ALIAS[k] for k in have if k in FIELD_ALIAS}
@@ -85,7 +88,7 @@ def apply_rules(cls: Classification, ret: RetrievalResult, brain: Brain, guard: 
         gv = guard.validated_fields.get("npi" if f == "provider_npi" else f)
         value = cls.extracted_fields.get(f, "")
         if gv and gv.startswith("invalid"):
-            res.invalid_fields[f] = f"{label(f)} is invalid ({gv.removeprefix('invalid: ')})"
+            res.invalid_fields[f] = f"{label(f)} is invalid ({PROBLEM.get(gv.removeprefix('invalid: '), gv.removeprefix('invalid: '))})"
         elif f in have and value and not value.startswith("[") and regexes.get(f) and not re.fullmatch(regexes[f], value):
             res.invalid_fields[f] = f"{label(f)} is invalid (unexpected format)"
         elif f not in have:

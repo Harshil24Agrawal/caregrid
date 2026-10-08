@@ -105,6 +105,9 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
     guard = check_input(text, user)
     case.masked_text = guard.masked_text
     log(store, "request_received", user, case_id, channel=channel.value, pii_types=guard.pii_types_found)
+    if guard.patient_key:                                      # a valid, known Health ID: the case belongs on that patient's timeline
+        case.related = {"profile": [guard.patient_key]}
+        log(store, "patient_linked", user, case_id)
 
     if not guard.allowed:                                      # injection / access denied / too long: refuse and route
         cls = Classification(request_type="unknown", model_used="guard",

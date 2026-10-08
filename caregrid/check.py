@@ -151,7 +151,7 @@ def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) ->
          f"{total} cases checked" + (f"; {len(gaps)} gap(s), e.g. {gaps[:3]}" if gaps else ""))
 
     failed = [s.key for s in scenarios if not s.passed]
-    item("demo 10/10 on mock", not failed and len(scenarios) == 10, f"{len(scenarios) - len(failed)}/{len(scenarios)} scenarios passed"
+    item("demo 11/11 on mock", not failed and len(scenarios) == 11, f"{len(scenarios) - len(failed)}/{len(scenarios)} scenarios passed"
          + (f"; FAILED {failed}" if failed else ""))
 
     # 7 API smoke (read-only on the clean demo state): auth, RBAC and the amount rule through HTTP

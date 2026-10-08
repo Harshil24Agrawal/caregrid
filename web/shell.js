@@ -1,7 +1,7 @@
 /* CareGrid web UI shell: header (provider, PHI masked, demo login, reset), 5-link nav, toasts, and presentation helpers.
    Presentation only: every number and decision on the pages comes from the API. */
 (function () {
-  var NAV = [['index.html', 'Dashboard'], ['intake.html', 'New request'], ['case.html', 'Cases'], ['knowledge.html', 'Knowledge'], ['audit.html', 'Audit']];
+  var NAV = [['index.html', 'Dashboard'], ['intake.html', 'New request'], ['case.html', 'Cases'], ['patients.html', 'Patients'], ['knowledge.html', 'Knowledge'], ['audit.html', 'Audit']];
 
   // plain-language labels; the code stays in the tooltip
   var REASON = {
@@ -22,7 +22,7 @@
     precedent_saved: 'Saved as precedent', trust_updated: 'Trust ladder updated', communication_sent: 'Message sent', comms_note: 'Message note', pr_requested: 'Change proposed',
     pr_opened: 'Change request opened', pr_decided: 'Change request decided', pr_denied: 'Change request refused', pr_skipped: 'No change request needed',
     pr_rejected_request: 'Change request not accepted', llm_failure: 'Model unavailable', output_checked: 'Output cleaned', requester_asked: 'Asked the requester',
-    pii_remasked: 'Personal data re-masked'
+    pii_remasked: 'Personal data re-masked', patient_linked: 'Linked to a patient', record_viewed: 'Patient record viewed', record_revealed: 'Personal details revealed'
   };
   var STEPS = [['Guard', 'request_received'], ['Classify', 'classified'], ['Gather sources', 'context_assembled'], ['Check rules', 'rules_applied'], ['Draft', 'proposal_generated'],
     ['Verify sources', 'citations_verified'], ['Score', 'confidence_scored'], ['Route', 'routed']];

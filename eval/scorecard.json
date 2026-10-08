@@ -8,8 +8,8 @@
   },
   "rows": 66,
   "limit": null,
-  "started_at": "2026-10-09T04:16:58",
-  "wall_seconds": 2.1,
+  "started_at": "2026-10-09T04:49:15",
+  "wall_seconds": 2.0,
   "metrics": {
     "request_type_accuracy": {
       "value": 100.0,
@@ -95,10 +95,10 @@
       "strong_share_of_llm_requests_pct": 26.3
     },
     "latency_ms": {
-      "avg": 22.8,
-      "p50": 21.5,
-      "p95": 26.7,
-      "max": 202.0
+      "avg": 22.3,
+      "p50": 21.4,
+      "p95": 25.9,
+      "max": 190.6
     },
     "llm_fallbacks": 0,
     "llm_output_rejected": 0,
@@ -146,7 +146,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 202.0,
+      "latency_ms": 190.6,
       "error": null
     },
     {
@@ -189,7 +189,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.0,
+      "latency_ms": 24.1,
       "error": null
     },
     {
@@ -232,7 +232,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.0,
+      "latency_ms": 23.9,
       "error": null
     },
     {
@@ -275,7 +275,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.8,
+      "latency_ms": 23.4,
       "error": null
     },
     {
@@ -317,7 +317,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.1,
+      "latency_ms": 22.5,
       "error": null
     },
     {
@@ -359,7 +359,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.3,
+      "latency_ms": 22.5,
       "error": null
     },
     {
@@ -407,7 +407,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.4,
+      "latency_ms": 20.6,
       "error": null
     },
     {
@@ -449,7 +449,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.3,
+      "latency_ms": 22.1,
       "error": null
     },
     {
@@ -491,7 +491,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.5,
+      "latency_ms": 25.2,
       "error": null
     },
     {
@@ -533,7 +533,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.8,
+      "latency_ms": 24.3,
       "error": null
     },
     {
@@ -575,7 +575,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.8,
+      "latency_ms": 23.5,
       "error": null
     },
     {
@@ -671,7 +671,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.7,
+      "latency_ms": 25.8,
       "error": null
     },
     {
@@ -724,7 +724,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 27.9,
+      "latency_ms": 26.3,
       "error": null
     },
     {
@@ -774,7 +774,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.6,
+      "latency_ms": 25.0,
       "error": null
     },
     {
@@ -830,7 +830,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.7,
+      "latency_ms": 24.8,
       "error": null
     },
     {
@@ -880,7 +880,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.3,
+      "latency_ms": 24.7,
       "error": null
     },
     {
@@ -930,7 +930,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.2,
+      "latency_ms": 25.0,
       "error": null
     },
     {
@@ -972,7 +972,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 19.4,
+      "latency_ms": 19.3,
       "error": null
     },
     {
@@ -1024,7 +1024,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.1,
+      "latency_ms": 22.0,
       "error": null
     },
     {
@@ -1081,7 +1081,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.4,
+      "latency_ms": 23.9,
       "error": null
     },
     {
@@ -1123,7 +1123,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.2,
+      "latency_ms": 20.6,
       "error": null
     },
     {
@@ -1165,7 +1165,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.3,
+      "latency_ms": 20.5,
       "error": null
     },
     {
@@ -1212,7 +1212,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.7,
+      "latency_ms": 25.6,
       "error": null
     },
     {
@@ -1259,7 +1259,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 27.7,
+      "latency_ms": 26.6,
       "error": null
     },
     {
@@ -1306,7 +1306,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.1,
+      "latency_ms": 25.9,
       "error": null
     },
     {
@@ -1352,7 +1352,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.7,
+      "latency_ms": 22.1,
       "error": null
     },
     {
@@ -1404,7 +1404,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.5,
+      "latency_ms": 23.7,
       "error": null
     },
     {
@@ -1450,7 +1450,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.1,
+      "latency_ms": 21.4,
       "error": null
     },
     {
@@ -1496,7 +1496,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.6,
+      "latency_ms": 21.3,
       "error": null
     },
     {
@@ -1542,7 +1542,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 19.8,
+      "latency_ms": 20.0,
       "error": null
     },
     {
@@ -1589,7 +1589,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.5,
+      "latency_ms": 24.7,
       "error": null
     },
     {
@@ -1631,7 +1631,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.5,
+      "latency_ms": 23.5,
       "error": null
     },
     {
@@ -1687,7 +1687,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.4,
+      "latency_ms": 24.9,
       "error": null
     },
     {
@@ -1740,7 +1740,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.3,
+      "latency_ms": 24.8,
       "error": null
     },
     {
@@ -1782,7 +1782,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.2,
+      "latency_ms": 22.7,
       "error": null
     },
     {
@@ -1876,7 +1876,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.6,
+      "latency_ms": 21.8,
       "error": null
     },
     {
@@ -1924,7 +1924,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.0,
+      "latency_ms": 22.4,
       "error": null
     },
     {
@@ -1972,7 +1972,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.0,
+      "latency_ms": 15.2,
       "error": null
     },
     {
@@ -2020,7 +2020,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 18.6,
+      "latency_ms": 14.5,
       "error": null
     },
     {
@@ -2068,7 +2068,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.0,
+      "latency_ms": 14.3,
       "error": null
     },
     {
@@ -2116,7 +2116,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 17.5,
+      "latency_ms": 14.5,
       "error": null
     },
     {
@@ -2164,7 +2164,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.7,
+      "latency_ms": 14.6,
       "error": null
     },
     {
@@ -2210,7 +2210,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.3,
+      "latency_ms": 9.8,
       "error": null
     },
     {
@@ -2256,7 +2256,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 19.8,
+      "latency_ms": 19.6,
       "error": null
     },
     {
@@ -2302,7 +2302,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.3,
+      "latency_ms": 9.2,
       "error": null
     },
     {
@@ -2348,7 +2348,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.1,
+      "latency_ms": 8.7,
       "error": null
     },
     {
@@ -2394,7 +2394,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.4,
+      "latency_ms": 9.0,
       "error": null
     },
     {
@@ -2442,7 +2442,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 10.0,
+      "latency_ms": 11.6,
       "error": null
     },
     {
@@ -2488,7 +2488,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.0,
+      "latency_ms": 8.8,
       "error": null
     },
     {
@@ -2534,7 +2534,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 8.7,
+      "latency_ms": 8.8,
       "error": null
     },
     {
@@ -2582,7 +2582,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.9,
+      "latency_ms": 9.7,
       "error": null
     },
     {
@@ -2628,7 +2628,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.0,
+      "latency_ms": 8.6,
       "error": null
     },
     {
@@ -2676,7 +2676,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 16.8,
+      "latency_ms": 15.0,
       "error": null
     },
     {
@@ -2724,7 +2724,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.6,
+      "latency_ms": 14.8,
       "error": null
     },
     {
@@ -2772,7 +2772,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.8,
+      "latency_ms": 14.1,
       "error": null
     },
     {
@@ -2819,7 +2819,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.4,
+      "latency_ms": 15.2,
       "error": null
     },
     {
@@ -2867,7 +2867,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.3,
+      "latency_ms": 14.4,
       "error": null
     },
     {
@@ -2914,7 +2914,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.2,
+      "latency_ms": 20.7,
       "error": null
     },
     {
@@ -2961,7 +2961,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.4,
+      "latency_ms": 20.5,
       "error": null
     },
     {
@@ -3008,7 +3008,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 19.5,
+      "latency_ms": 20.0,
       "error": null
     },
     {
@@ -3055,7 +3055,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 18.5,
+      "latency_ms": 17.8,
       "error": null
     },
     {
@@ -3097,7 +3097,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.9,
+      "latency_ms": 21.5,
       "error": null
     },
     {
@@ -3139,7 +3139,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.5,
+      "latency_ms": 23.4,
       "error": null
     },
     {
@@ -3181,7 +3181,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.8,
+      "latency_ms": 21.2,
       "error": null
     }
   ],

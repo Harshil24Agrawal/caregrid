@@ -111,6 +111,8 @@ def extract_fields(masked_text: str) -> dict[str, str]:
         out["npi"] = out["provider_npi"] = "[NPI]"
     if "[MEMBER_ID]" in t:
         out["member_id"] = "[MEMBER_ID]"
+    if "[HEALTH_ID]" in t:
+        out["health_id"] = "[HEALTH_ID]"
     if m := re.search(r"\bPA-\d{4}-\d{5}\b", t):
         out["auth_id"] = m.group(0)
     if m := re.search(r"\bCLM-\d{8}\b", t):

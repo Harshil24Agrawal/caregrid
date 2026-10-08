@@ -107,6 +107,7 @@ class GuardResult(BaseModel):
     validated_fields: dict[str, str] = {}    # structured IDs validated on RAW text before masking,
                                              # e.g. {"npi": "invalid: 9 digits", "member_id": "valid"} — flags only, never values
     notes: list[str] = []
+    patient_key: str | None = None           # profile key (PRF-2xxx) of the patient a VALID, known Health ID in the raw text belongs to; never the ID itself
 
 class Classification(BaseModel):
     request_type: str                        # one of DATA_SPEC request types, or "unknown"
