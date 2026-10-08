@@ -59,7 +59,25 @@ def _answered(llm: LLM) -> list[str]:
     return list(answered if isinstance(answered, list) else getattr(llm, "calls", []))
 
 
-def _route_and_save(case: Case, store: Store, llm: LLM, calls_before: int) -> Case:
+def _failed(llm: LLM) -> list[str]:
+    failed = getattr(llm, "failures", None)
+    return list(failed) if isinstance(failed, list) else []
+
+
+def log_llm_failures(store: Store, case: Case, types: list[str]) -> None:
+    """Failure TYPES only (timeout | http_503 | http_429 | parse_error | other), never payloads, in the audit log and the case notes."""
+    if not types:
+        return
+    log(store, "llm_failure", None, case.id, types=types)
+    if case.rules is not None:
+        for t in dict.fromkeys(types):
+            note = f"llm_failure: {t}"
+            if note not in case.rules.notes:
+                case.rules.notes.append(note)
+
+
+def _route_and_save(case: Case, store: Store, llm: LLM, calls_before: tuple[int, int]) -> Case:
+    log_llm_failures(store, case, _failed(llm)[calls_before[1]:])
     before = case.state
     decide_route(case, store.get_trust(case.classification.request_type if case.classification else "unknown"))
     if case.state != before:
@@ -69,7 +87,7 @@ def _route_and_save(case: Case, store: Store, llm: LLM, calls_before: int) -> Ca
         reason_codes=[c.value for c in case.reason_codes])
     if case.routing == "auto":
         log(store, "auto_with_audit", None, case.id, state=case.state.value, trust_level=case.trust_level)
-    calls = _answered(llm)[calls_before:]
+    calls = _answered(llm)[calls_before[0]:]
     case.llm_tiers_used = list(dict.fromkeys(calls))
     store.save_case(case)
     return case
@@ -79,7 +97,7 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
         case_id: str | None = None) -> Case:
     now = datetime.now()
     case_id = case_id or store.next_case_id()
-    calls_before = len(_answered(llm))
+    calls_before = (len(_answered(llm)), len(_failed(llm)))
     case = Case(id=case_id, created_at=now, requester=user, channel=channel, masked_text="", state=State.NEW,
                 state_history=[(State.NEW, now)])
 

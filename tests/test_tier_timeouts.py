@@ -86,3 +86,36 @@ def test_pipeline_downgrades_then_falls_back(env, monkeypatch):
 def test_mock_unaffected(env):
     c = env.store.get_case(env.run(S1).id)
     assert set(c.llm_tiers_used) <= {"light", "strong"} and c.proposal.model_used.startswith("mock")
+
+
+# ---------------------------------------------------------------- failure TYPES (audit + case notes, never payloads)
+def test_failure_type_mapping():
+    from caregrid.llm import failure_type
+
+    class E(Exception):
+        def __init__(self, code):
+            super().__init__("SECRET PAYLOAD")
+            self.status_code = code
+    assert failure_type(TimeoutError()) == "timeout" and failure_type(E(429)) == "http_429" and failure_type(E(503)) == "http_503"
+    assert failure_type(E(500)) == "other" and failure_type(ValueError("bad json")) == "parse_error" and failure_type(RuntimeError()) == "other"
+
+
+def test_pipeline_logs_failure_types_without_payloads(env, monkeypatch):
+    from caregrid.reasoning.pipeline import run
+    set_cfg(monkeypatch, light=2, strong=0.2)
+    c = env.store.get_case(run(S3, env.asha, env.store, env.brain, TierLLM("slow")).id)
+    ev = [e for e in env.store.list_audit(c.id) if e.event == "llm_failure"]
+    assert len(ev) == 1 and ev[0].details["types"] == ["timeout"]
+    assert "llm_failure: timeout" in c.rules.notes
+
+    class Payload(MockLLM):
+        def complete_json(self, *a):
+            self.calls.append(a[2])
+            e = RuntimeError("echo of prompt: staff@clinic.example")
+            e.status_code = 503
+            raise e
+    c = env.store.get_case(run(S3, env.asha, env.store, env.brain, Payload()).id)
+    ev = [e for e in env.store.list_audit(c.id) if e.event == "llm_failure"]
+    assert ev[0].details["types"] == ["http_503", "http_503", "http_503"] or set(ev[0].details["types"]) == {"http_503"}
+    assert "staff@clinic" not in str([e.model_dump_json() for e in env.store.list_audit(c.id)]) + " ".join(c.rules.notes)
+    assert "llm_failure: http_503" in c.rules.notes and "llm_fallback" in c.rules.notes

@@ -99,7 +99,11 @@ def draft_pr(case: Case, d: ReviewDecision, brain: Brain, llm: LLM, store: Store
     if page is None:
         return None
     note = anonymize(d.note)[0].strip() if d.note else ""
+    failed_before = len(getattr(llm, "failures", []))
     body, reason, _model = _draft_body(page.body, page.id, page.version, case, d, note, llm)
+    failed = list(getattr(llm, "failures", []))[failed_before:]
+    if failed and store is not None:
+        log(store, "llm_failure", d.reviewer, case.id, types=failed, step="pr_draft")
     if body == page.body and not (meta.keys() - {"target_page"}):
         return None
     pr = KnowledgePR(id=f"PR-{uuid.uuid4().hex[:6]}", target_page_id=page.id, base_version=page.version, proposed_body=body,

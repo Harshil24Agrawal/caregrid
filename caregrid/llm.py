@@ -133,6 +133,29 @@ def call_with_timeout(fn, timeout_s: float):
         ex.shutdown(wait=False)
 
 
+FAILURE_TYPES = ("timeout", "http_503", "http_429", "parse_error", "other")
+
+
+def failure_type(exc: BaseException) -> str:
+    """Classify an LLM failure as a TYPE only (never the message: provider errors can echo the prompt)."""
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    status = getattr(exc, "status_code", None)
+    if status == 429:
+        return "http_429"
+    if status == 503:
+        return "http_503"
+    if isinstance(exc, (ValueError, TypeError)) and not isinstance(exc, OSError):
+        return "parse_error"                     # includes "did not return valid JSON" and "not a JSON object"
+    return "other"
+
+
+def _record_failure(llm, exc: BaseException) -> None:
+    record = getattr(llm, "failures", None)
+    if isinstance(record, list):
+        record.append(failure_type(exc))
+
+
 def complete_json_tiered(llm, system: str, user: str, tier: Tier) -> tuple[dict, Tier]:
     """complete_json with the per-tier timeout. A strong call that times out or fails is retried ONCE on the light model with the same
     prompt. Returns (result, tier that actually answered) and records that tier in llm.tiers_used. Raises when no tier answered
@@ -140,11 +163,19 @@ def complete_json_tiered(llm, system: str, user: str, tier: Tier) -> tuple[dict,
     used: Tier = tier
     try:
         raw = call_with_timeout(lambda: llm.complete_json(system, user, tier), timeout_for(tier))
-    except Exception:
+    except Exception as e:
+        _record_failure(llm, e)
         if tier != "strong":
             raise
         used = "light"
-        raw = call_with_timeout(lambda: llm.complete_json(system, user, "light"), timeout_for("light"))
+        try:
+            raw = call_with_timeout(lambda: llm.complete_json(system, user, "light"), timeout_for("light"))
+        except Exception as e2:
+            _record_failure(llm, e2)
+            raise
+    if not isinstance(raw, dict):
+        _record_failure(llm, ValueError("not a JSON object"))
+        raise ValueError("model did not return a JSON object")
     record = getattr(llm, "tiers_used", None)
     if isinstance(record, list):
         record.append(used)
@@ -197,6 +228,7 @@ class MockLLM(_JsonRetryMixin):
     def __init__(self) -> None:
         self.calls = []
         self.tiers_used = []
+        self.failures = []
 
     def model_name(self, tier: Tier) -> str:
         return "mock-light" if tier == "light" else "mock-strong"
@@ -358,6 +390,7 @@ class OpenAICompatLLM(_JsonRetryMixin):
 
         self.calls: list[str] = []
         self.tiers_used: list[str] = []
+        self.failures: list[str] = []
         self._openai, self._sleep = openai, sleep
         self._json_mode = True                               # flipped off once the endpoint rejects response_format
         self._limiter = RateLimiter(config.LLM_MAX_RPM, clock=clock, sleep=sleep)
