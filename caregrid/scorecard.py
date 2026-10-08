@@ -94,6 +94,7 @@ def score_row(row: dict, case, brain: Brain, store, latency_s: float) -> dict:
         "expected_route": row["expected_route"], "got_route": case.routing, "expected_team": row["expected_team"], "got_team": case.assigned_team,
         "route_ok": case.routing == row["expected_route"] and case.assigned_team == row["expected_team"],
         "decision": decision.value if decision else None, "state": case.state.value,
+        "expected_reasons": sorted(want), "got_reasons": sorted(r.value for r in case.reason_codes),
         "score": case.confidence.score if case.confidence else None, "band": case.confidence.band.value if case.confidence else None,
         "expected_missing": sorted(exp_missing), "got_missing": sorted(got_missing), "missing_found": len(exp_missing & got_missing),
         "citations": total, "citations_valid": valid, "stale_cited": stale_cited,
@@ -153,6 +154,34 @@ def aggregate(rows: list[dict]) -> dict:
     }
 
 
+DEFAULT_EVAL_FILE = "requests_eval.csv"
+
+
+def misses(card: dict) -> list[dict]:
+    """Every row that missed on type, routing (route + team), safety, missing fields or abstention, with expected vs got."""
+    out = []
+    for r in card["results"]:
+        why = []
+        if r.get("error"):
+            why.append(f"error {r['error']}")
+        if not r["type_ok"]:
+            why.append(f"type expected {r['expected_type']} got {r.get('got_type')}")
+        if not r["route_ok"]:
+            why.append(f"route expected {r.get('expected_route')}@{r.get('expected_team')} got {r.get('got_route')}@{r.get('got_team')}")
+        if r["missing_found"] < len(r["expected_missing"]):
+            why.append(f"missing expected {r['expected_missing']} got {r['got_missing']}")
+        if r["safety_row"] and not r["safety_ok"]:
+            why.append("safety row not refused/routed cleanly")
+        if r["expects_abstain"] and not r["abstained_ok"]:
+            why.append("expected abstention (POLICY_GAP) not produced")
+        if r["expects_auto"] and r["abstained"]:
+            why.append("false abstention on an auto row")
+        if why:
+            out.append({"id": r["id"], "why": why, "decision": r.get("decision"), "score": r.get("score"),
+                        "expected_reasons": r.get("expected_reasons"), "got_reasons": r.get("got_reasons")})
+    return out
+
+
 def run_eval(provider: str = "mock", limit: int | None = None, echo=None, llm: LLM | None = None, csv_path: Path | None = None) -> dict:
     from caregrid.cli import llm_for       # lazy: cli imports this module lazily too
 
@@ -185,7 +214,7 @@ def run_eval(provider: str = "mock", limit: int | None = None, echo=None, llm: L
     metrics = aggregate(results)
     metrics["pii_leaks_in_store"] = len(leaks)
     return {
-        "provider": provider, "llm_provider": "mock" if provider == "mock" else config.LLM_PROVIDER,
+        "file": csv_path.name, "provider": provider, "llm_provider": "mock" if provider == "mock" else config.LLM_PROVIDER,
         "models": {"light": model_name(llm, "light"), "strong": model_name(llm, "strong")}, "rows": len(results), "limit": limit,
         "started_at": started.isoformat(timespec="seconds"), "wall_seconds": round(wall, 1), "metrics": metrics, "results": results,
     }
@@ -249,7 +278,11 @@ def write_outputs(card: dict, out_dir: Path | None = None) -> list[Path]:
     out_dir = out_dir or config.EVAL_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     js, md = json.dumps(card, indent=2, ensure_ascii=False) + "\n", render_markdown(card)
-    names = [f"scorecard.{card['provider']}.partial"] if card["limit"] else ["scorecard", f"scorecard.{card['provider']}"]
+    stem = Path(card.get("file", DEFAULT_EVAL_FILE)).stem
+    if stem != Path(DEFAULT_EVAL_FILE).stem:                   # another dataset (e.g. heldout.csv) never overwrites the main scorecard
+        names = [f"scorecard.{stem}.{card['provider']}" + (".partial" if card["limit"] else "")]
+    else:
+        names = [f"scorecard.{card['provider']}.partial"] if card["limit"] else ["scorecard", f"scorecard.{card['provider']}"]
     written = []
     for name in names:
         for ext, text in (("json", js), ("md", md)):

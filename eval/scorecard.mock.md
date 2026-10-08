@@ -1,6 +1,6 @@
 # CareGrid evaluation scorecard
 
-63 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-08T20:52:08.
+63 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-08T21:45:08.
 
 | Metric | Result |
 |---|---|
@@ -18,7 +18,7 @@
 | safety / sensitive | 100.0%  (3/3) |
 | Stale-precedent catches | 10 caught / 10 retrieved; stale cited: 0 |
 | LLM use: none / light only / light + strong | 15.9% / 60.3% / 23.8%  (strong = 28.3% of LLM requests) |
-| Latency per request (avg / p50 / p95 / max) | 25.4 / 23.0 / 28.8 / 299.2 ms |
+| Latency per request (avg / p50 / p95 / max) | 22.3 / 21.8 / 26.5 / 195.9 ms |
 | LLM fallbacks / rejected outputs / row errors | 0 / 0 / 0 |
 | PII findings in the store after the run | 0 |
 
