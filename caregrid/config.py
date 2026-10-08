@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -26,6 +27,9 @@ def _path(name: str, default: str) -> Path:
     p = Path(_str(name, default))
     return p if p.is_absolute() else ROOT / p
 
+
+# "Today" for date rules (retroactive changes). Override with CAREGRID_TODAY=YYYY-MM-DD for deterministic runs.
+TODAY = date.fromisoformat(os.environ.get("CAREGRID_TODAY") or date.today().isoformat())
 
 LLM_PROVIDER = _str("LLM_PROVIDER", "mock").lower()  # mock | bedrock | anthropic
 AWS_REGION = _str("AWS_REGION", "ap-south-1")

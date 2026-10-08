@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
-MEMBER_ID = re.compile(r"(?<![\w-])M\d{8}(?!\w)")
-NPI_CONTEXT = re.compile(r"(?i)(\b(?:NPI|National Provider Identifier)\b[^0-9\n]{0,15}?)(?<!\d)(\d{9,10})(?!\d)")
+# malformed IDs (M + 5..12 digits) are masked too; validity is judged by the guard on the raw text
+MEMBER_ID = re.compile(r"(?<![\w-])M\d{5,12}(?!\w)")
+NPI_CONTEXT = re.compile(r"(?i)(\b(?:NPI|National Provider Identifier)\b[^0-9\n]{0,15}?)(?<!\d)(\d{5,12})(?!\d)")
 PHONE_IN = re.compile(r"(?<![\w-])(?:\+91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?!\w)")
 PHONE_US = re.compile(r"(?<![\w-])(?:\+1[\s.-]?)?(?:\(\d{3}\)\s?|\d{3}[\s.-])\d{3}[\s.-]\d{4}(?!\w)")
 DOB = re.compile(
@@ -26,9 +27,12 @@ ADDRESS = re.compile(
     r"(?<![\w₹,.-])\d{1,5}[A-Za-z]?(?:[/-]\d{1,4})?,?\s+(?:[A-Za-z][\w.'-]*\s+){0,4}?" + _SUFFIX + r"\b"
     r"(?:,\s*[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)?(?:,?\s+[A-Z]{2}\s+\d{5}|,?\s+\d{6}(?!\d))?"
 )
-HONORIFIC_NAME = re.compile(
-    r"\b(Dr|Mr|Ms|Mrs|Miss|Prof)\b\.?\s+([A-Z][a-z'’-]+(?:\s+[A-Z][a-z'’-]+){0,2})"
-)
+_NAME_WORD = r"[A-Z][a-z'\u2019]+(?:-[A-Z][a-z]+)?"
+_NAME = _NAME_WORD + r"(?:\s+" + _NAME_WORD + r"){0,2}"
+HONORIFIC_NAME = re.compile(r"\b(Dr|Mr|Ms|Mrs|Miss|Prof)\b\.?\s+(" + _NAME + ")")
+# "changed name from Priya Nair to Priya Menon": both names are personal data even without an honorific
+NAME_PAIR = re.compile(r"(?i:\bname\b)([^.\n]{0,25}?)(?i:\bfrom\b)\s+(" + _NAME + r")\s+(?i:to)\s+(" + _NAME + ")")
+NAME_TO = re.compile(r"(?i:\bname\b)([^.\n\[]{0,25}?)(?i:\bto\b)\s+(" + _NAME + ")")
 _HONORIFIC_PREFIX = r"(?:(?:Dr|Mr|Ms|Mrs|Miss|Prof)\.?\s+)?"
 
 
@@ -159,6 +163,18 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None) -> tuple[str, list[
         return token(m.group(2), "PROVIDER" if m.group(1) == "Dr" else "PERSON")
 
     s = HONORIFIC_NAME.sub(by_honorific, s)
+
+    def by_pair(m: re.Match[str]) -> str:
+        found.add("PERSON")
+        return f"name{m.group(1)}from {token(m.group(2), 'PERSON')} to {token(m.group(3), 'PERSON')}"
+
+    s = NAME_PAIR.sub(by_pair, s)
+
+    def by_name_to(m: re.Match[str]) -> str:
+        found.add("PERSON")
+        return f"name{m.group(1)}to {token(m.group(2), 'PERSON')}"
+
+    s = NAME_TO.sub(by_name_to, s)
 
     spans = _presidio_persons(s)
     for start, end in sorted(spans, reverse=True):

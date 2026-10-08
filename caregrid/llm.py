@@ -95,19 +95,6 @@ class _JsonRetryMixin:
 
 
 # ---------------------------------------------------------------- mock
-_CLINICAL = re.compile(r"\b(dose|dosage|medication|symptom|diagnos\w*|treatment)\b|should .* take|double .* dose", re.I)
-_TYPE_RULES: list[tuple[str, re.Pattern[str]]] = [
-    ("provider_address_change", re.compile(r"address", re.I)),
-    ("provider_name_change", re.compile(r"name change|changed name|rename|legally changed", re.I)),
-    ("portal_access_reset", re.compile(r"password|login|log in|portal access|locked", re.I)),
-    ("prior_auth_status", re.compile(r"prior auth|authorization status", re.I)),
-    ("dme_equipment_request", re.compile(r"wheelchair|oxygen|equipment|\bDME\b", re.I)),
-    ("claim_status_inquiry", re.compile(r"\bclaim", re.I)),
-    ("complaint_grievance", re.compile(r"complain|grievance|lawyer|unacceptable", re.I)),
-    ("general_policy_question", re.compile(r"what documents|how do i|policy|supporting documents", re.I)),
-]
-
-
 class MockLLM(_JsonRetryMixin):
     """Deterministic, offline. Keyword classifier + template proposer; Phase 4 refines the proposer."""
 
@@ -144,15 +131,18 @@ class MockLLM(_JsonRetryMixin):
 
     @staticmethod
     def _classify(user: str) -> dict:
+        from caregrid.reasoning.extract import extract_fields, keyword_type
+        from caregrid.reasoning.guards import CLINICAL
+
         text = user.split("REQUEST:", 1)[-1].strip()
-        request_type = next((t for t, rx in _TYPE_RULES if rx.search(text)), "unknown")
+        request_type, hit = keyword_type(text)
         return {
             "request_type": request_type,
-            "confidence": 0.9 if request_type != "unknown" else 0.3,
-            "extracted_fields": {},
+            "confidence": 0.9 if hit else 0.3,
+            "extracted_fields": extract_fields(text),
             "urgency": "normal",
             "sentiment": "negative" if request_type == "complaint_grievance" else "neutral",
-            "is_clinical": bool(_CLINICAL.search(text)),
+            "is_clinical": bool(CLINICAL.search(text)),
             "is_account_specific": request_type in {"prior_auth_status", "claim_status_inquiry"},
             "is_sensitive": request_type == "complaint_grievance",
         }
