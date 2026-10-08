@@ -8,7 +8,7 @@ from caregrid import config
 
 # command -> phase that implements it (stubs until then)
 _STUBS: dict[str, int] = {}
-_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", "demo", "eval", "check", *_STUBS]
+_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", "demo", "eval", "check", "serve", *_STUBS]
 
 
 def _short_err(e: Exception) -> str:
@@ -181,6 +181,15 @@ def cmd_eval(provider: str = "mock", limit: int | None = None, file: str | None 
     return 1 if card["metrics"]["errors"] else 0
 
 
+def cmd_serve(port: int = 8000, host: str = "127.0.0.1") -> int:
+    """Serve the API and the static web UI (web/) on http://127.0.0.1:8000 . Reads LLM_PROVIDER from .env like every other command."""
+    import uvicorn
+
+    print(f"CareGrid web UI: http://{host}:{port}/   (API docs: /api/docs)   LLM provider: {config.LLM_PROVIDER}")
+    uvicorn.run("caregrid.api:app", host=host, port=port, log_level="warning")
+    return 0
+
+
 def cmd_check(skip_pytest: bool = False) -> int:
     """The midnight checklist, headless: PASS/FAIL per item, exit 1 on any FAIL."""
     from caregrid.check import run_check
@@ -194,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m caregrid.cli", description="CareGrid command line")
     parser.add_argument("command", choices=[*_COMMANDS, "llmcheck"])
     parser.add_argument("--limit", type=int, default=None, help="eval only: run just the first N rows (writes a *.partial.* scorecard)")
+    parser.add_argument("--port", type=int, default=8000, help="serve only: port (default 8000)")
     parser.add_argument("--skip-pytest", action="store_true", help="check only: skip the (slow) pytest item")
     parser.add_argument("--file", default=None, help="eval only: CSV to evaluate (default eval/requests_eval.csv); never edited")
     parser.add_argument("--provider", choices=["mock", "env"], default="mock",
@@ -214,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_reset()
     if args.command == "demo":
         return cmd_demo(args.provider)
+    if args.command == "serve":
+        return cmd_serve(args.port)
     if args.command == "check":
         return cmd_check(args.skip_pytest)
     if args.command == "eval":

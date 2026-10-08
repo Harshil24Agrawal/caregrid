@@ -154,6 +154,31 @@ def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) ->
     item("demo 10/10 on mock", not failed and len(scenarios) == 10, f"{len(scenarios) - len(failed)}/{len(scenarios)} scenarios passed"
          + (f"; FAILED {failed}" if failed else ""))
 
+    # 7 API smoke (read-only on the clean demo state): auth, RBAC and the amount rule through HTTP
+    try:
+        from fastapi.testclient import TestClient
+
+        from caregrid import api
+
+        api.reset_process_state()
+        c = TestClient(api.app)
+        h = lambda u: {"X-CareGrid-User": u}   # noqa: E731
+        asha_all = c.get("/api/cases/CASE-1024", headers=h("U1")).text + c.get("/api/cases/CASE-1024/audit", headers=h("U1")).text             + c.post("/api/cases/CASE-1024/assistant", headers=h("U1"), json={"question": "What is the amount?"}).text
+        probes = {
+            "users open": c.get("/api/users").status_code == 200, "no header -> 401": c.get("/api/cases").status_code == 401,
+            "bad header -> 401": c.get("/api/cases", headers=h("U99")).status_code == 401,
+            "senior sees the case": c.get("/api/cases/CASE-1024", headers=h("U4")).status_code == 200,
+            "other team -> 403": c.get("/api/cases/CASE-1024", headers=h("U7")).status_code == 403,
+            "ops employee never gets the amount": "62,500" not in asha_all and "62500" not in asha_all,
+            "assistant restricts the amount question": "ACCESS RESTRICTED" in asha_all,
+            "only the knowledge owner decides PRs": c.post("/api/prs/PR-none/decision", headers=h("U4"), json={"approve": True}).status_code == 403,
+        }
+        failed_probes = [k for k, v in probes.items() if not v]
+        item("API smoke (auth, RBAC, amount rule)", not failed_probes, f"{len(probes) - len(failed_probes)}/{len(probes)} probes"
+             + (f"; FAILED {failed_probes}" if failed_probes else ""))
+    except Exception as e:                       # noqa: BLE001 - a broken import must show up as a FAIL, not a crash
+        item("API smoke (auth, RBAC, amount rule)", False, f"{type(e).__name__}: {e}")
+
     bad = [name for name, ok, _ in results if not ok]
     echo(f"\n{len(results) - len(bad)}/{len(results)} checks passed" + (f"; FAILED: {len(bad)}" if bad else ""))
     return 1 if bad else 0

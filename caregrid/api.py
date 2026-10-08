@@ -1,0 +1,571 @@
+"""HTTP API for the web UI: a thin layer over the existing backend functions (pipeline, rbac, decisions, prs, metrics, lint, graph, assistant).
+
+No business logic lives here or in the browser. What this module adds:
+  * demo authentication: the acting user is named by the header `X-CareGrid-User: U1..U7`. Missing / unknown -> 401. This is NOT real
+    authentication (anyone can send any id); it exists to demonstrate server-side RBAC. /api/users and /api/config are open so the user
+    switcher can be drawn before a user is chosen.
+  * server-side RBAC on every endpoint (rbac.can_view / can_approve / visible_cases); a section the user may not see is returned as
+    {"restricted": true, ...}; PermissionError from the backend -> 403 with the ACCESS RESTRICTED line.
+  * every free-text field is passed through guards.check_output(text, viewer) before it leaves the server.
+  * one Brain per process, shared by run / submit_decision / decide_pr, guarded by a lock for the writes.
+Request bodies are never logged and the 422 handler does not echo them back.
+"""
+from __future__ import annotations
+
+import csv
+import json
+import re
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from caregrid import config
+from caregrid.insights import metrics
+from caregrid.insights.graph import case_graph
+from caregrid.knowledge.brain import Brain
+from caregrid.knowledge.lint import lint
+from caregrid.llm import get_llm, model_name
+from caregrid.models import Case, Channel, DecisionCode, ReviewAction, ReviewDecision, State, User
+from caregrid.rbac import can_approve, can_view, visible_cases
+from caregrid.reasoning.guards import check_output
+from caregrid.reasoning.pipeline import run
+from caregrid.seed import load_users
+from caregrid.store import SQLiteStore
+from caregrid.workflow import assistant as assistant_mod
+from caregrid.workflow.decisions import DECIDABLE, AlreadyDecidedError, submit_decision
+from caregrid.workflow.prs import PRStateError, decide_pr
+
+RESTRICTED_LINE = "ACCESS RESTRICTED: you don't have permission to view this information."
+MAX_REQUEST_CHARS = 4000
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+app = FastAPI(title="CareGrid API", version="1.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+_lock = threading.RLock()
+_state: dict[str, Any] = {"brain": None, "llm": None}
+
+
+# ------------------------------------------------------------------ process-wide pieces
+def get_brain() -> Brain:
+    """ONE Brain per process; run(), submit_decision() and decide_pr() all use this instance."""
+    with _lock:
+        if _state["brain"] is None:
+            _state["brain"] = Brain(config.BRAIN_DIR)
+        return _state["brain"]
+
+
+def get_llm_client():
+    with _lock:
+        if _state["llm"] is None:
+            _state["llm"] = get_llm()
+        return _state["llm"]
+
+
+def reset_process_state() -> None:
+    """Tests: forget the cached Brain / LLM (e.g. after config paths changed)."""
+    with _lock:
+        _state["brain"] = None
+        _state["llm"] = None
+
+
+def get_store() -> SQLiteStore:
+    return SQLiteStore()                       # one short-lived connection per operation
+
+
+# ------------------------------------------------------------------ auth, errors
+def actor(x_caregrid_user: str | None = Header(default=None)) -> User:
+    us = load_users(config.DATA_DIR)
+    user = us.get((x_caregrid_user or "").strip().upper())
+    if user is None:
+        raise HTTPException(status_code=401, detail="Unknown or missing X-CareGrid-User header (demo auth: U1..U7).")
+    return user
+
+
+@app.exception_handler(PermissionError)
+async def _forbidden(_: Request, exc: PermissionError):
+    return JSONResponse(status_code=403, content={"detail": RESTRICTED_LINE, "restricted": True})
+
+
+@app.exception_handler(AlreadyDecidedError)
+async def _conflict(_: Request, exc: AlreadyDecidedError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(PRStateError)
+async def _pr_conflict(_: Request, exc: PRStateError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(RequestValidationError)
+async def _invalid(_: Request, exc: RequestValidationError):
+    # the default handler echoes the submitted value back ("input"): never echo request text
+    errors = [{"loc": list(e.get("loc", [])), "msg": e.get("msg"), "type": e.get("type")} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
+# ------------------------------------------------------------------ output guard
+_STRUCTURAL = re.compile(r"^(?:[A-Z]{1,8}-[A-Za-z0-9]+(?: v\d+)?|\d{4}-\d\d-\d\d(?:[T ][\d:.]+)?|[a-z_]+)$")
+
+
+def scrub(obj: Any, user: User) -> Any:
+    """check_output(text, viewer) on every string that is not an id / timestamp / enum value."""
+    if isinstance(obj, str):
+        return obj if (not obj or _STRUCTURAL.match(obj)) else check_output(obj, user)[1]
+    if isinstance(obj, list):
+        return [scrub(x, user) for x in obj]
+    if isinstance(obj, dict):
+        return {k: scrub(v, user) for k, v in obj.items()}
+    return obj
+
+
+def restricted(section: str) -> dict:
+    return {"restricted": True, "section": section, "message": RESTRICTED_LINE}
+
+
+# ------------------------------------------------------------------ serializers
+def hours_since(ts: datetime) -> float:
+    return round((datetime.now() - ts).total_seconds() / 3600, 1)
+
+
+def case_row(c: Case) -> dict:
+    return {
+        "id": c.id, "request_type": c.classification.request_type if c.classification else "unknown", "state": c.state.value,
+        "risk": c.rules.risk.value if c.rules else None, "band": c.confidence.band.value if c.confidence else None,
+        "score": c.confidence.score if c.confidence else None, "team": c.assigned_team, "routing": c.routing,
+        "approver_role": c.approver_role.value if c.approver_role else None, "age_hours": hours_since(c.created_at),
+        "created_at": c.created_at.isoformat(), "reason_codes": [r.value for r in c.reason_codes], "requester": c.requester.name,
+        "trust_level": c.trust_level,
+    }
+
+
+def approval_gate(user: User, case: Case) -> dict:
+    """Why the approve / ask actions are or are not allowed for this user (the UI only displays this)."""
+    ask_ok = can_view(user, case, "full") and case.requester.id != user.id
+    ask_why = "" if ask_ok else "Only someone who can see the whole case, and is not the requester, may ask for more information."
+    ok = can_approve(user, case)
+    if ok:
+        why = ""
+    elif case.requester.id == user.id:
+        why = "Separation of duties: you cannot approve your own request."
+    elif case.rules is None or user.role.value not in {"team_specialist", "ops_manager", "senior_reviewer"}:
+        why = f"The {user.role.value} role cannot approve cases."
+    elif user.role.value == "team_specialist" and user.team != case.assigned_team:
+        why = f"This case belongs to {case.assigned_team}; you are in {user.team}."
+    else:
+        why = f"{case.rules.risk.value.upper()} risk requires {case.approver_role.value if case.approver_role else 'a more senior reviewer'}."
+    decidable = case.state in DECIDABLE or case.state == State.NEEDS_INFO
+    return {"decidable": decidable, "state": case.state.value,
+            "approve": {"allowed": ok and case.state in DECIDABLE, "reason": why or ("" if case.state in DECIDABLE else f"Case is {case.state.value}.")},
+            "ask": {"allowed": ask_ok and decidable, "reason": ask_why or ("" if decidable else f"Case is {case.state.value}.")}}
+
+
+def evidence(case: Case, user: User, brain: Brain) -> dict:
+    """profile / invoice / logs / jira / runbook, each gated by can_view. Free text from records is not shown (ids, status, dates only)."""
+    out: dict = {}
+    d = config.DATA_DIR
+
+    def rows(name: str, key: str, refs: list[str]) -> list[dict]:
+        path = d / name
+        if not path.exists():
+            return []
+        with open(path, encoding="utf-8", newline="") as f:
+            return [r for r in csv.DictReader(f) if r[key] in refs]
+
+    for key, section in (("profile", "profile"), ("invoice", "billing"), ("logs", "logs"), ("jira", "logs"), ("runbook", "logs")):
+        refs = case.related.get(key, [])
+        if not refs:
+            out[key] = []
+        elif not can_view(user, case, section):
+            out[key] = restricted(section)
+        elif key == "profile":
+            profiles = json.loads((d / "profiles.json").read_text(encoding="utf-8")).get("providers", []) if (d / "profiles.json").exists() else []
+            out[key] = [{"id": p["profile_key"], "specialty": p.get("specialty")} for p in profiles if p.get("profile_key") in refs] \
+                or [{"id": r} for r in refs]
+        elif key == "invoice":
+            out[key] = [{"id": r["invoice_id"], "status": r["status"], "due_date": r["due_date"], "amount_inr": int(r["amount_inr"])}
+                        for r in rows("billing.csv", "invoice_id", refs)]
+        elif key == "logs":
+            out[key] = [{"id": r["log_id"], "system": r["system"], "level": r["level"], "ts": r["ts"]} for r in rows("system_logs.csv", "log_id", refs)]
+        elif key == "jira":
+            out[key] = [{"id": r["jira_id"], "status": r["status"]} for r in rows("jira_records.csv", "jira_id", refs)]
+        else:
+            out[key] = [{"id": r, "title": (brain.get(r).title if brain.get(r) else r)} for r in refs]
+    return out
+
+
+def pii_types(store: SQLiteStore, case_id: str) -> list[str]:
+    ev = next((e for e in store.list_audit(case_id) if e.event == "request_received"), None)
+    return sorted(set(ev.details.get("pii_types", []))) if ev else []
+
+
+TRUST_LABEL = {0: "Shadow", 1: "Assist", 2: "Auto-with-audit"}
+
+
+def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dict:
+    """The case as this user may see it. Sections beyond `summary` are {"restricted": true} when can_view says no."""
+    if not can_view(user, case, "summary"):
+        raise PermissionError(case.id)
+    full = can_view(user, case, "full")
+    rules, prop, conf = case.rules, case.proposal, case.confidence
+    rtype = case.classification.request_type if case.classification else "unknown"
+    trust = store.get_trust(rtype)
+    refused = bool(prop and prop.decision_code == DecisionCode.REFUSE_AND_ROUTE)
+    kind = ("refused" if refused else "answered" if case.state == State.ANSWERED else "needs_info" if case.state == State.NEEDS_INFO
+            else "in_review" if case.state in (State.IN_REVIEW, State.ESCALATED) else case.state.value)
+    detail: dict = {
+        "id": case.id, "result_kind": kind, "created_at": case.created_at.isoformat(), "age_hours": hours_since(case.created_at),
+        "channel": case.channel.value, "state": case.state.value,
+        "state_history": [{"state": s.value, "ts": ts.isoformat()} for s, ts in case.state_history],
+        "requester": {"id": case.requester.id, "name": case.requester.name, "role": case.requester.role.value},
+        "request_type": rtype, "urgency": case.classification.urgency if case.classification else None,
+        "sentiment": case.classification.sentiment if case.classification else None,
+        "masked_text": case.masked_text, "reason_codes": [r.value for r in case.reason_codes], "routing": case.routing,
+        "assigned_team": case.assigned_team, "approver_role": case.approver_role.value if case.approver_role else None,
+        "risk": rules.risk.value if rules else None, "trust": {"level": trust.level, "label": TRUST_LABEL.get(trust.level, str(trust.level)),
+                                                              "consecutive_agreements": trust.consecutive_agreements},
+        "confidence": {"score": conf.score, "band": conf.band.value} if conf else None,
+        "pii_types": pii_types(store, case.id),
+        "proposal": None,
+        "reviewer": None,
+        "evidence": evidence(case, user, brain),
+        "actions": approval_gate(user, case),
+    }
+    if prop:
+        detail["proposal"] = {
+            "decision_code": prop.decision_code.value, "route_team": prop.route_team, "answer_text": prop.answer_text,
+            "next_steps": prop.next_steps, "questions_for_requester": prop.questions_for_requester,
+            "citations": [{"page_id": c.page_id, "version": c.version, "page_type": c.page_type.value, "title": c.title} for c in prop.citations],
+        }
+    if not full:
+        detail["reviewer"] = restricted("full")
+    else:
+        capped = bool(rules and rules.conflicts and conf and conf.band.value == "medium")
+        considered = []
+        for c in case.citations_considered:
+            page = brain.get(c.page_id, c.version) if c.version else brain.get(c.page_id)
+            prec = brain.get_precedent(c.page_id)
+            considered.append({"page_id": c.page_id, "version": c.version, "page_type": c.page_type.value, "title": c.title,
+                               "status": (page.status.value if page else prec.status.value if prec else "missing"),
+                               "current_version": (brain.get(c.page_id).version if brain.get(c.page_id) else None)})
+        detail["reviewer"] = {
+            "summary_for_reviewer": prop.summary_for_reviewer if prop else "", "model_used": prop.model_used if prop else None,
+            "llm_tiers_used": case.llm_tiers_used,
+            "risk_reasons": rules.risk_reasons if rules else [], "conflicts": rules.conflicts if rules else [],
+            "notes": rules.notes if rules else [], "required_fields": rules.required_fields if rules else [],
+            "missing_fields": rules.missing_fields if rules else [], "invalid_fields": rules.invalid_fields if rules else {},
+            "confidence": ({"score": conf.score, "band": conf.band.value, "breakdown": conf.breakdown, "explanation": conf.explanation,
+                            "capped_at_medium": capped} if conf else None),
+            "citations_considered": considered,
+        }
+    return scrub(detail, user)
+
+
+def must_get_case(case_id: str, user: User, store: SQLiteStore) -> Case:
+    case = store.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Unknown case.")
+    if not can_view(user, case, "summary"):
+        raise PermissionError(case_id)
+    return case
+
+
+# ------------------------------------------------------------------ open endpoints
+@app.get("/api/users")
+def api_users():
+    return [{"id": u.id, "name": u.name, "role": u.role.value, "team": u.team} for u in load_users(config.DATA_DIR).values()]
+
+
+@app.get("/api/config")
+def api_config():
+    llm = get_llm_client()
+    return {"llm_provider": config.LLM_PROVIDER, "models": {"light": model_name(llm, "light"), "strong": model_name(llm, "strong")},
+            "embed_provider": config.EMBED_PROVIDER, "max_request_chars": MAX_REQUEST_CHARS,
+            "auth": "demo header X-CareGrid-User (not real authentication)"}
+
+
+@app.post("/api/reset")
+def api_reset(user: User = Depends(actor)):
+    from caregrid.admin import reset_demo
+
+    with _lock:
+        result = reset_demo(brain=get_brain())
+    return {"ok": True, "seeded": result["seeded"], "brain": result["brain"], "leak_findings": len(result["leak_findings"])}
+
+
+# ------------------------------------------------------------------ requests and cases
+class RequestIn(BaseModel):
+    text: str = Field(min_length=1, max_length=MAX_REQUEST_CHARS)
+    channel: Channel = Channel.PORTAL
+
+
+@app.post("/api/requests")
+def api_create_request(body: RequestIn, user: User = Depends(actor)):
+    store, brain, llm = get_store(), get_brain(), get_llm_client()
+    with _lock:
+        case = run(body.text, user, store, brain, llm, body.channel)
+    return {"case": case_detail(store.get_case(case.id), user, store, brain)}
+
+
+@app.get("/api/cases")
+def api_cases(user: User = Depends(actor)):
+    store = get_store()
+    rows = sorted(visible_cases(user, store), key=lambda c: c.created_at, reverse=True)
+    return scrub([case_row(c) for c in rows], user)
+
+
+@app.get("/api/cases/{case_id}")
+def api_case(case_id: str, user: User = Depends(actor)):
+    store = get_store()
+    return case_detail(must_get_case(case_id, user, store), user, store, get_brain())
+
+
+@app.get("/api/cases/{case_id}/graph")
+def api_case_graph(case_id: str, user: User = Depends(actor)):
+    store, brain = get_store(), get_brain()
+    must_get_case(case_id, user, store)
+    return scrub(case_graph(case_id, user, store, brain).model_dump(), user)
+
+
+def audit_row(e) -> dict:
+    return {"id": e.id, "ts": e.ts.isoformat(), "case_id": e.case_id, "event": e.event, "actor_id": e.actor_id, "actor_role": e.actor_role,
+            "details": e.details}
+
+
+@app.get("/api/cases/{case_id}/audit")
+def api_case_audit(case_id: str, user: User = Depends(actor)):
+    store = get_store()
+    must_get_case(case_id, user, store)
+    return scrub([audit_row(e) for e in store.list_audit(case_id)], user)
+
+
+class DecisionIn(BaseModel):
+    action: ReviewAction
+    edited_answer: str | None = None
+    note: str = Field(default="", max_length=2000)
+    save_as_precedent: bool = True
+    propose_pr: bool = False
+    contact_email: str | None = None
+    contact_phone: str | None = None
+    channels: list[Channel] = []
+    meta_changes: dict = {}
+
+
+@app.post("/api/cases/{case_id}/decision")
+def api_decision(case_id: str, body: DecisionIn, user: User = Depends(actor)):
+    store, brain, llm = get_store(), get_brain(), get_llm_client()
+    case = must_get_case(case_id, user, store)
+    before_len, before_prs = len(case.state_history), {p.id for p in store.list_prs()}
+    d = ReviewDecision(case_id=case_id, reviewer=user, action=body.action, edited_answer=body.edited_answer, note=body.note,
+                       save_as_precedent=body.save_as_precedent, propose_pr=body.propose_pr, contact_email=body.contact_email,
+                       contact_phone=body.contact_phone, channels=body.channels, meta_changes=body.meta_changes)
+    try:
+        with _lock:
+            done = submit_decision(d, store, brain, llm)
+    except AlreadyDecidedError:
+        raise                                      # -> 409 via the exception handler (it is a ValueError subclass)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Unknown case.") from e
+    events = store.list_audit(case_id)
+    prec = next((e.details.get("precedent") for e in reversed(events) if e.event == "precedent_saved"), None)
+    trust = next((e.details for e in reversed(events) if e.event == "trust_updated"), None)
+    result = {
+        "state_path": [s.value for s, _ in done.state_history[before_len - 1:]],
+        "precedent_id": prec,
+        "trust": ({"request_type": trust.get("request_type"), "agreed": trust.get("agreed"), "level_before": trust.get("level_before"),
+                   "level_after": trust.get("level_after"), "streak_before": trust.get("streak_before"),
+                   "streak_after": trust.get("streak_after")} if trust else None),
+        "pr_id": next((p.id for p in store.list_prs() if p.id not in before_prs), None),
+        "communications": [{"id": c.id, "channel": c.channel.value, "status": c.status} for c in store.list_comms(case_id)],
+    }
+    return {"case": case_detail(done, user, store, brain), "result": result}
+
+
+class AssistantIn(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+@app.post("/api/cases/{case_id}/assistant")
+def api_assistant(case_id: str, body: AssistantIn, user: User = Depends(actor)):
+    store, brain, llm = get_store(), get_brain(), get_llm_client()
+    case = must_get_case(case_id, user, store)
+    reply = assistant_mod.ask(case, body.question, user, brain, store, llm)
+    return {"text": reply.text, "citations": reply.citations, "restricted": reply.restricted, "refused": reply.refused,
+            "model_used": reply.model_used, "tier": reply.tier, "chips": reply.chips}
+
+
+# ------------------------------------------------------------------ dashboard, scorecard
+def scoped_store(user: User, store: SQLiteStore) -> SQLiteStore:
+    """An in-memory store holding only the cases this user may see, so the existing metrics functions can be reused unchanged."""
+    scoped = SQLiteStore(":memory:")
+    for c in visible_cases(user, store):
+        scoped.save_case(c)
+    return scoped
+
+
+@app.get("/api/metrics")
+def api_metrics(user: User = Depends(actor)):
+    store, brain = get_store(), get_brain()
+    sc = scoped_store(user, store)
+    waiting = [c for c in visible_cases(user, store) if c.state in (State.IN_REVIEW, State.ESCALATED, State.NEEDS_INFO)]
+    trust = [t.model_dump(mode="json") for t in metrics.trust_overview(store)]
+    for t in trust:
+        t["agreement_pct"] = round(100 * t["agreements"] / t["total_reviews"], 1) if t["total_reviews"] else None
+        t["label"] = TRUST_LABEL.get(t["level"])
+    return scrub({
+        "counts": metrics.dashboard_counts(sc), "queue": [case_row(c) for c in sorted(waiting, key=lambda c: c.created_at)],
+        "visible_cases": len(visible_cases(user, store)), "trust": trust, "gap_radar": metrics.gap_radar(sc, brain),
+        "queue_aging": metrics.queue_aging(sc), "cost_split": metrics.cost_split(sc),
+        "trust_thresholds": {"l1_streak": config.TRUST_L1_STREAK, "l1_ratio": config.TRUST_L1_RATIO, "l2_reviews": config.TRUST_L2_REVIEWS},
+    }, user)
+
+
+def _card(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    card = json.loads(path.read_text(encoding="utf-8"))
+    card.pop("results", None)
+    if card.get("adjudicated"):
+        card["adjudicated"].pop("results", None)
+    return card
+
+
+@app.get("/api/scorecard")
+def api_scorecard(user: User = Depends(actor)):
+    e = config.EVAL_DIR
+    return {"main": _card(e / "scorecard.json"),
+            "heldout": {"mock": _card(e / "scorecard.heldout.mock.json"), "env": _card(e / "scorecard.heldout.env.json")}}
+
+
+# ------------------------------------------------------------------ knowledge
+@app.get("/api/pages")
+def api_pages(type: str | None = None, status: str | None = None, q: str | None = None, user: User = Depends(actor)):
+    brain = get_brain()
+    rows = [{"id": p.id, "version": p.version, "type": p.type.value, "status": p.status.value, "title": p.title,
+             "effective_from": p.effective_from.isoformat() if p.effective_from else None, "request_types": p.request_types}
+            for p in brain.all_pages()]
+    rows += [{"id": r.id, "version": 1, "type": "precedent", "status": r.status.value, "title": f"{r.request_type}: {r.summary[:70]}",
+              "effective_from": r.date.isoformat() if r.date else None, "request_types": [r.request_type]} for r in brain.precedents()]
+    rows = [r for r in rows if (not type or r["type"] == type) and (not status or r["status"] == status)
+            and (not q or q.lower() in r["id"].lower() or q.lower() in r["title"].lower())]
+    return scrub(sorted(rows, key=lambda r: (r["id"], -r["version"])), user)
+
+
+@app.get("/api/pages/{page_id}")
+def api_page(page_id: str, version: int | None = None, user: User = Depends(actor)):
+    brain = get_brain()
+    prec = brain.get_precedent(page_id)
+    if prec is not None:
+        return scrub({"id": prec.id, "type": "precedent", "version": 1, "status": prec.status.value, "title": prec.summary[:80],
+                      "body": prec.summary, "meta": {"request_type": prec.request_type, "decision_code": prec.decision_code.value,
+                                                      "route_team": prec.route_team, "policy_id": prec.policy_id,
+                                                      "policy_version": prec.policy_version, "outcome": prec.outcome},
+                      "links": [], "versions": [{"version": 1, "status": prec.status.value}]}, user)
+    page = brain.get(page_id, version)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Unknown page.")
+    versions = [{"version": p.version, "status": p.status.value} for p in brain.all_pages() if p.id == page_id]
+    return scrub({"id": page.id, "type": page.type.value, "version": page.version, "status": page.status.value, "title": page.title,
+                  "owner": page.owner, "effective_from": page.effective_from.isoformat() if page.effective_from else None,
+                  "request_types": page.request_types, "links": page.links, "body": page.body, "meta": page.meta,
+                  "versions": sorted(versions, key=lambda v: v["version"])}, user)
+
+
+@app.get("/api/lint")
+def api_lint(user: User = Depends(actor)):
+    findings = lint(get_brain(), get_store())
+    return scrub([f.model_dump() for f in findings], user)
+
+
+@app.get("/api/brain/{name}")
+def api_brain_file(name: str, user: User = Depends(actor)):
+    if name not in ("index", "log"):
+        raise HTTPException(status_code=404, detail="Unknown file.")
+    path = get_brain().dir / f"{name}.md"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if name == "log":
+        text = "\n".join(text.splitlines()[-200:])
+    return {"name": f"{name}.md", "text": scrub(text, user)}
+
+
+def pr_row(p) -> dict:
+    return {"id": p.id, "target_page_id": p.target_page_id, "base_version": p.base_version, "status": p.status, "author_id": p.author_id,
+            "created_at": p.created_at.isoformat(), "decided_by": p.decided_by, "reason": p.reason, "diff": p.diff,
+            "meta_changes": p.meta_changes}
+
+
+@app.get("/api/prs")
+def api_prs(status: str | None = None, user: User = Depends(actor)):
+    return scrub([pr_row(p) for p in get_store().list_prs(status)], user)
+
+
+class PRDecisionIn(BaseModel):
+    approve: bool
+
+
+@app.post("/api/prs/{pr_id}/decision")
+def api_pr_decision(pr_id: str, body: PRDecisionIn, user: User = Depends(actor)):
+    store, brain = get_store(), get_brain()
+    try:
+        with _lock:
+            pr = decide_pr(pr_id, body.approve, user, store, brain)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Unknown PR.") from e
+    return scrub(pr_row(pr), user)
+
+
+# ------------------------------------------------------------------ comms, audit
+@app.get("/api/comms")
+def api_comms(user: User = Depends(actor)):
+    store = get_store()
+    out = []
+    for c in sorted(store.list_comms(), key=lambda c: c.ts, reverse=True):
+        case = store.get_case(c.case_id)
+        if case is None or not can_view(user, case, "summary"):
+            continue
+        out.append({"id": c.id, "case_id": c.case_id, "channel": c.channel.value, "recipient": c.recipient, "message": c.message,
+                    "status": c.status, "simulated": c.status == "simulated" or c.channel.value in ("whatsapp", "sms"),
+                    "ts": c.ts.isoformat()})
+    return scrub(out, user)
+
+
+@app.get("/api/audit")
+def api_audit(case: str | None = None, event: str | None = None, actor_id: str | None = Query(default=None, alias="actor"),
+              limit: int = Query(default=300, ge=1, le=2000), user: User = Depends(actor)):
+    """Events for cases this user may see. Events without a case (system, PR decisions) only for roles that see the whole system."""
+    store = get_store()
+    cases = {}
+    out = []
+    system_ok = user.role.value in ("auditor", "senior_reviewer", "ops_manager", "knowledge_owner")
+    for e in sorted(store.list_audit(), key=lambda e: e.ts, reverse=True):
+        if case and e.case_id != case:
+            continue
+        if event and e.event != event:
+            continue
+        if actor_id and e.actor_id != actor_id:
+            continue
+        if e.case_id is None:
+            if not system_ok:
+                continue
+        else:
+            if e.case_id not in cases:
+                cases[e.case_id] = store.get_case(e.case_id)
+            c = cases[e.case_id]
+            if c is None or not can_view(user, c, "summary"):
+                continue
+        out.append(audit_row(e))
+        if len(out) >= limit:
+            break
+    return {"events": scrub(out, user), "event_types": sorted({e["event"] for e in out})}
+
+
+# ------------------------------------------------------------------ static web UI (last, so /api/* wins)
+if WEB_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")

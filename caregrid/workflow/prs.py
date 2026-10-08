@@ -117,12 +117,12 @@ def draft_pr(case: Case, d: ReviewDecision, brain: Brain, llm: LLM, store: Store
 def decide_pr(pr_id: str, approve: bool, user: User, store: Store, brain: Brain) -> KnowledgePR:
     """Knowledge-owner decision. Approve publishes the next page version (old version expired, dependent precedents stale, log.md and
     index updated); a meta `retire` retires the page instead. Reject changes only the PR. Both are audited."""
+    if user.role != Role.KNOWLEDGE_OWNER:                  # permission first: a non-owner learns nothing about which PR ids exist
+        log(store, "pr_denied", user, None, pr=pr_id, role=user.role.value)
+        raise PermissionError(f"{user.role.value} may not decide knowledge PRs")
     pr = next((p for p in store.list_prs() if p.id == pr_id), None)
     if pr is None:
         raise KeyError(f"unknown PR {pr_id}")
-    if user.role != Role.KNOWLEDGE_OWNER:
-        log(store, "pr_denied", user, None, pr=pr.id, role=user.role.value)
-        raise PermissionError(f"{user.role.value} may not decide knowledge PRs")
     if pr.status != "open":
         log(store, "pr_rejected_request", user, None, pr=pr.id, reason=f"already {pr.status}")
         raise PRStateError(f"{pr.id} is already {pr.status}")
