@@ -34,7 +34,12 @@ TODAY = date.fromisoformat(os.environ.get("CAREGRID_TODAY") or date.today().isof
 
 LLM_PROVIDER = _str("LLM_PROVIDER", "mock").lower()  # mock | bedrock | anthropic
 AWS_REGION = _str("AWS_REGION", "ap-south-1")
-LLM_TIMEOUT_S = _float("LLM_TIMEOUT_S", 20)   # per LLM call; on timeout the deterministic path takes over
+# Per-call wall-clock limits. LLM_TIMEOUT_LIGHT_S / LLM_TIMEOUT_STRONG_S win; LLM_TIMEOUT_S (if set) is the fallback for both;
+# otherwise 15 s (light) / 35 s (strong). Read through llm.timeout_for(tier) at call time.
+LLM_TIMEOUT_S = float(os.environ["LLM_TIMEOUT_S"]) if os.environ.get("LLM_TIMEOUT_S") else None
+LLM_TIMEOUT_LIGHT_S = float(os.environ["LLM_TIMEOUT_LIGHT_S"]) if os.environ.get("LLM_TIMEOUT_LIGHT_S") else None
+LLM_TIMEOUT_STRONG_S = float(os.environ["LLM_TIMEOUT_STRONG_S"]) if os.environ.get("LLM_TIMEOUT_STRONG_S") else None
+DEFAULT_TIMEOUT_LIGHT_S, DEFAULT_TIMEOUT_STRONG_S = 15.0, 35.0
 LLM_MAX_RPM = _int("LLM_MAX_RPM", 10)          # in-process requests-per-minute cap for openai_compat (free tiers are rate limited)
 OPENAI_COMPAT_BASE_URL = _str("OPENAI_COMPAT_BASE_URL", "")   # any OpenAI-compatible endpoint: Gemini, Groq, Ollama, ...
 OPENAI_COMPAT_API_KEY = _str("OPENAI_COMPAT_API_KEY", "")

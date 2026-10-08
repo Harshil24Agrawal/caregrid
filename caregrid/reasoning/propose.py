@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from caregrid import config
 from caregrid.ingest.leakscan import detect_pii
-from caregrid.llm import LLM, call_with_timeout, model_name
+from caregrid.llm import LLM, complete_json_tiered, model_name
 from caregrid.models import (
     Citation, Classification, DecisionCode, PageStatus, PageType, Proposal, ReasonCode, RetrievalResult, Risk, RuleResult,
 )
@@ -283,7 +283,10 @@ def propose(masked_text: str, cls: Classification, ret: RetrievalResult, rules: 
                 f"RULES (fixed, do not change):\n{rules_block(rules, decision, team)}\n\n"
                 "CONTEXT PAGES:\n" + "\n\n".join(f"{c.header}\n{c.body}" for c in ctx))
         try:
-            raw = call_with_timeout(lambda: llm.complete_json(PROPOSER_SYSTEM, user, tier), config.LLM_TIMEOUT_S)
+            wanted = tier
+            raw, tier = complete_json_tiered(llm, PROPOSER_SYSTEM, user, tier)
+            if tier != wanted and "llm_tier_downgrade" not in rules.notes:
+                rules.notes.append("llm_tier_downgrade")
             if not isinstance(raw, dict):
                 raise ValueError("proposer did not return a JSON object")
         except Exception:

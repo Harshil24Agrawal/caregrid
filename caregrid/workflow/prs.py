@@ -10,10 +10,9 @@ import difflib
 import uuid
 from datetime import datetime
 
-from caregrid import config
 from caregrid.ingest.anonymize import anonymize
 from caregrid.knowledge.brain import Brain
-from caregrid.llm import LLM, call_with_timeout, model_name
+from caregrid.llm import LLM, complete_json_tiered, model_name
 from caregrid.models import Case, KnowledgePR, PageStatus, PageType, ReviewDecision, Role, User
 from caregrid.reasoning.prompts import PR_SYSTEM, PR_USER
 from caregrid.reasoning.propose import llm_text_problem
@@ -61,7 +60,7 @@ def _draft_body(current_body: str, page_id: str, version: int, case: Case, d: Re
     summary = case.masked_text[:600] if case.masked_text else ""
     user = PR_USER.format(page_id=page_id, version=version, body=current_body, summary=summary, action=d.action.value, note=note)
     try:
-        raw = call_with_timeout(lambda: llm.complete_json(PR_SYSTEM, user, "strong"), config.LLM_TIMEOUT_S)
+        raw, used = complete_json_tiered(llm, PR_SYSTEM, user, "strong")
         body, reason = raw.get("proposed_body"), raw.get("reason")
         if not isinstance(body, str) or not body.strip():
             return fallback, "draft unusable (empty); kept current text plus the reviewer note", "fallback:deterministic"
@@ -75,7 +74,7 @@ def _draft_body(current_body: str, page_id: str, version: int, case: Case, d: Re
         problem = "not_a_minimal_edit"
     if problem is not None:
         return fallback, f"draft rejected by guard ({problem}); kept current text plus the reviewer note", "fallback:deterministic"
-    return body, reason.strip() if isinstance(reason, str) and reason.strip() else "Reviewer-driven clarification.", model_name(llm, "strong")
+    return body, reason.strip() if isinstance(reason, str) and reason.strip() else "Reviewer-driven clarification.", model_name(llm, used)
 
 
 def unified_diff(old: str, new: str, page_id: str) -> str:

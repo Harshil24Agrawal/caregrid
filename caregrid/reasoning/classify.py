@@ -5,9 +5,8 @@ occur in the masked request. Guard flags are OR-ed in by the pipeline, so the LL
 """
 from __future__ import annotations
 
-from caregrid import config
 from caregrid.constants import REQUEST_TYPES
-from caregrid.llm import LLM, call_with_timeout, model_name
+from caregrid.llm import LLM, complete_json_tiered, model_name
 from caregrid.models import Classification
 from caregrid.reasoning.extract import extract_fields, keyword_type
 from caregrid.reasoning.guards import CLINICAL, SENSITIVE
@@ -41,8 +40,7 @@ def classify(masked_text: str, llm: LLM) -> Classification:
     kw_type, hit = keyword_type(masked_text)
     code_fields = extract_fields(masked_text)
     try:
-        raw = call_with_timeout(lambda: llm.complete_json(CLASSIFIER_SYSTEM, f"REQUEST:\n{masked_text}", "light"),
-                                config.LLM_TIMEOUT_S)
+        raw, _ = complete_json_tiered(llm, CLASSIFIER_SYSTEM, f"REQUEST:\n{masked_text}", "light")
         if not isinstance(raw, dict):
             raise ValueError("classifier did not return a JSON object")
     except Exception:  # timeout, provider error, unparseable output after the provider's own retry

@@ -53,6 +53,12 @@ def _clean_output(case: Case, store: Store) -> None:
         log(store, "output_checked", None, case.id, issues=sorted(set(issues)))
 
 
+def _answered(llm: LLM) -> list[str]:
+    """Tiers that actually answered (a strong call retried on light counts as light); providers without it fall back to attempted calls."""
+    answered = getattr(llm, "tiers_used", None)
+    return list(answered if isinstance(answered, list) else getattr(llm, "calls", []))
+
+
 def _route_and_save(case: Case, store: Store, llm: LLM, calls_before: int) -> Case:
     before = case.state
     decide_route(case, store.get_trust(case.classification.request_type if case.classification else "unknown"))
@@ -63,7 +69,7 @@ def _route_and_save(case: Case, store: Store, llm: LLM, calls_before: int) -> Ca
         reason_codes=[c.value for c in case.reason_codes])
     if case.routing == "auto":
         log(store, "auto_with_audit", None, case.id, state=case.state.value, trust_level=case.trust_level)
-    calls = list(getattr(llm, "calls", []))[calls_before:]
+    calls = _answered(llm)[calls_before:]
     case.llm_tiers_used = list(dict.fromkeys(calls))
     store.save_case(case)
     return case
@@ -73,7 +79,7 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
         case_id: str | None = None) -> Case:
     now = datetime.now()
     case_id = case_id or store.next_case_id()
-    calls_before = len(getattr(llm, "calls", []))
+    calls_before = len(_answered(llm))
     case = Case(id=case_id, created_at=now, requester=user, channel=channel, masked_text="", state=State.NEW,
                 state_history=[(State.NEW, now)])
 

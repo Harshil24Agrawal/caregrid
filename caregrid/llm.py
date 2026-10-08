@@ -112,6 +112,16 @@ def pace(llm, calls: int = 2) -> None:
         fn(calls)
 
 
+def timeout_for(tier: Tier) -> float:
+    """Wall-clock limit for one call at `tier`: the tier's own setting, else LLM_TIMEOUT_S, else 15 s (light) / 35 s (strong)."""
+    own = config.LLM_TIMEOUT_STRONG_S if tier == "strong" else config.LLM_TIMEOUT_LIGHT_S
+    if own is not None:
+        return own
+    if config.LLM_TIMEOUT_S is not None:
+        return config.LLM_TIMEOUT_S
+    return config.DEFAULT_TIMEOUT_STRONG_S if tier == "strong" else config.DEFAULT_TIMEOUT_LIGHT_S
+
+
 def call_with_timeout(fn, timeout_s: float):
     """Run fn() with a wall-clock limit. Raises TimeoutError; the worker thread is abandoned (never blocks the caller)."""
     from concurrent.futures import ThreadPoolExecutor
@@ -121,6 +131,24 @@ def call_with_timeout(fn, timeout_s: float):
         return ex.submit(fn).result(timeout=timeout_s)
     finally:
         ex.shutdown(wait=False)
+
+
+def complete_json_tiered(llm, system: str, user: str, tier: Tier) -> tuple[dict, Tier]:
+    """complete_json with the per-tier timeout. A strong call that times out or fails is retried ONCE on the light model with the same
+    prompt. Returns (result, tier that actually answered) and records that tier in llm.tiers_used. Raises when no tier answered
+    (the caller then takes the deterministic path and notes `llm_fallback`)."""
+    used: Tier = tier
+    try:
+        raw = call_with_timeout(lambda: llm.complete_json(system, user, tier), timeout_for(tier))
+    except Exception:
+        if tier != "strong":
+            raise
+        used = "light"
+        raw = call_with_timeout(lambda: llm.complete_json(system, user, "light"), timeout_for("light"))
+    record = getattr(llm, "tiers_used", None)
+    if isinstance(record, list):
+        record.append(used)
+    return raw, used
 
 
 _CTX_HEADER = re.compile(r"^\[([A-Za-z0-9-]+)(?: v(\d+))? \| (\w+) \| (.*)\]$", re.M)
@@ -168,6 +196,7 @@ class MockLLM(_JsonRetryMixin):
 
     def __init__(self) -> None:
         self.calls = []
+        self.tiers_used = []
 
     def model_name(self, tier: Tier) -> str:
         return "mock-light" if tier == "light" else "mock-strong"
@@ -328,6 +357,7 @@ class OpenAICompatLLM(_JsonRetryMixin):
         import openai
 
         self.calls: list[str] = []
+        self.tiers_used: list[str] = []
         self._openai, self._sleep = openai, sleep
         self._json_mode = True                               # flipped off once the endpoint rejects response_format
         self._limiter = RateLimiter(config.LLM_MAX_RPM, clock=clock, sleep=sleep)
@@ -336,7 +366,7 @@ class OpenAICompatLLM(_JsonRetryMixin):
         self._client = client
         if client is None and not self._config_error:
             self._client = openai.OpenAI(base_url=config.OPENAI_COMPAT_BASE_URL, api_key=config.OPENAI_COMPAT_API_KEY or "not-needed",
-                                         timeout=config.LLM_TIMEOUT_S, max_retries=0)
+                                         timeout=max(timeout_for("light"), timeout_for("strong")), max_retries=0)
 
     # -- transport
     def _chat(self, system: str, user: str, tier: Tier, want_json: bool) -> str:
@@ -352,7 +382,7 @@ class OpenAICompatLLM(_JsonRetryMixin):
             kwargs["response_format"] = {"type": "json_object"}
         retried = False                                      # ONE retry in total for transient errors (429 and 503)
         while True:
-            self._limiter.acquire(max_wait=max(config.LLM_TIMEOUT_S / 2, 1.0))
+            self._limiter.acquire(max_wait=max(timeout_for(tier) / 2, 1.0))
             try:
                 resp = self._client.chat.completions.create(**kwargs)
                 break
