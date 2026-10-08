@@ -346,3 +346,17 @@ def test_trust_ladder_uses_short_names_without_ellipsis(web):
     assert all("\u2026" not in n and "..." not in n for n in names)
     assert p.eval_on_selector_all(".trow .name", "els => els.every(e => e.scrollWidth <= e.clientWidth + 1)")      # nothing is cut off
     assert p.get_attribute(".trow .name >> nth=2", "title") == "Provider name change"
+
+
+def test_case_page_shows_a_summary_card_and_lists_a_summary_column(web):
+    web.as_user("U4")
+    p = web.go("/case.html?case=CASE-1024", "#summary")
+    card = text(p, "#summary")
+    assert "SUMMARY" in card.upper() and len(card.split(".")) >= 3
+    web.go("/case.html", "#rows tr.click")
+    assert "SUMMARY" in text(p, "thead").upper()
+    cell = p.locator("#rows tr.click td.ellip").first
+    assert cell.get_attribute("title") and cell.inner_text().strip()
+    web.go("/index.html", "table.compact tr.click")
+    assert "SUMMARY" in text(p, "table.compact thead").upper()
+    assert "EVALUATION" not in text(p).upper() and "GAP RADAR" not in text(p).upper()

@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from caregrid import config
 from caregrid.insights import metrics
+from caregrid.insights.explain import case_summary, one_liner
 from caregrid.insights.graph import case_graph
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.lint import lint
@@ -155,7 +156,7 @@ def case_row(c: Case, user: User | None = None) -> dict:
         "score": c.confidence.score if c.confidence else None, "team": c.assigned_team, "routing": c.routing,
         "approver_role": c.approver_role.value if c.approver_role else None, "age_hours": hours_since(c.created_at),
         "created_at": c.created_at.isoformat(), "reason_codes": [r.value for r in c.reason_codes], "requester": c.requester.name,
-        "trust_level": c.trust_level,
+        "trust_level": c.trust_level, "summary": one_liner(c),
     }
 
 
@@ -258,7 +259,7 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
         "requester": {"id": case.requester.id, "name": case.requester.name, "role": case.requester.role.value},
         "request_type": rtype, "urgency": case.classification.urgency if case.classification else None,
         "sentiment": case.classification.sentiment if case.classification else None,
-        "masked_text": case.masked_text, "reason_codes": [r.value for r in case.reason_codes], "routing": case.routing,
+        "summary": case_summary(case, brain, user), "masked_text": case.masked_text, "reason_codes": [r.value for r in case.reason_codes], "routing": case.routing,
         "assigned_team": case.assigned_team, "approver_role": case.approver_role.value if case.approver_role else None,
         "risk": rules.risk.value if rules else None, "trust": {"level": trust.level, "label": TRUST_LABEL.get(trust.level, str(trust.level)),
                                                               "consecutive_agreements": trust.consecutive_agreements},

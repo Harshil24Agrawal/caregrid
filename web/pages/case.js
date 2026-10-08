@@ -20,13 +20,13 @@
     var start = CG.q('state') && states.indexOf(CG.q('state')) >= 0 ? CG.q('state') : '';
     el.innerHTML = '<div class="page-head"><h1>Cases</h1><p class="muted">' + list.length + ' case' + (list.length === 1 ? '' : 's') + ' visible to ' + CG.esc(me.name) + ' (' + CG.esc(CG.role(me.role)) + ').</p></div>' +
       '<div class="card"><div class="flex" style="margin-bottom:10px"><label class="small muted">Show <select id="f-state"><option value="">all</option>' + states.map(function (s) { return '<option value="' + CG.esc(s) + '"' + (s === start ? ' selected' : '') + '>' + CG.esc(CG.human(s)) + '</option>'; }).join('') + '</select></label></div>' +
-      '<div class="tablewrap"><table><thead><tr><th>Case</th><th>What</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody id="rows"></tbody></table></div></div>';
+      '<div class="tablewrap"><table><thead><tr><th>Case</th><th>What</th><th>Summary</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody id="rows"></tbody></table></div></div>';
     function draw() {
       var f = document.getElementById('f-state').value;
       document.getElementById('rows').innerHTML = list.filter(function (c) { return !f || c.state === f; }).map(function (c) {
-        return '<tr class="click" data-id="' + CG.esc(c.id) + '"><td class="nw">' + CG.caseLink(c.id) + '</td><td class="nw">' + CG.esc(CG.what(c.request_type)) + '</td><td class="nw">' + CG.stateTag(c.state) + '</td><td class="nw">' + CG.riskTag(c.risk, true) +
+        return '<tr class="click" data-id="' + CG.esc(c.id) + '"><td class="nw">' + CG.caseLink(c.id) + '</td><td class="nw">' + CG.esc(CG.shortWhat(c.request_type)) + '</td><td class="ellip small" title="' + CG.esc(c.summary) + '">' + CG.esc(c.summary) + '</td><td class="nw">' + CG.stateTag(c.state) + '</td><td class="nw">' + CG.riskTag(c.risk, true) +
           '</td><td class="nw small">' + CG.esc(CG.team(c.team)) + '</td><td class="nw small">' + CG.esc(CG.age(c.age_hours)) + '</td></tr>';
-      }).join('') || '<tr><td colspan="6">' + CG.empty('No cases in this state.') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">' + CG.empty('No cases in this state.') + '</td></tr>';
       CG.$$('#rows tr.click').forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.tagName !== 'A') window.location.href = 'case.html?case=' + encodeURIComponent(tr.dataset.id); }; });
     }
     document.getElementById('f-state').onchange = draw;
@@ -242,6 +242,7 @@
     var tiers = c.reviewer && !CG.isRestricted(c.reviewer) ? c.reviewer.llm_tiers_used : null;
     el.innerHTML = '<div class="page-head"><a class="small" href="case.html">← All cases</a><div class="flex" style="margin-top:6px"><h1 class="mono">' + CG.esc(c.id) + '</h1><span style="font-size:18px;font-weight:600">' + CG.esc(CG.what(c.request_type)) + '</span>' +
       CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old · requested by ' + CG.esc(c.requester.name) + '</span></div></div>' +
+      '<div class="card summary-card" id="summary"><h2>Summary</h2><p>' + CG.esc(c.summary) + '</p></div>' +
       '<div class="card" style="margin-bottom:16px">' + CG.pipeline(lit, -1, null, tiers) + '</div>' +
       '<div class="grid g-case"><div class="card">' + rowsHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
       '<div class="tabs" role="tablist">' + [['evidence', 'Evidence'], ['graph', 'Graph'], ['audit', 'Audit timeline'], ['messages', 'Messages']].map(function (t) {
