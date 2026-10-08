@@ -141,5 +141,5 @@ def test_cli_llmcheck_fails_gracefully(monkeypatch, capsys):
 
 
 def test_cli_stub(capsys):
-    assert main(["data"]) == 0
+    assert main(["lint"]) == 0
     assert "not implemented" in capsys.readouterr().out

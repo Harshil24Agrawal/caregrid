@@ -31,13 +31,15 @@ LLM_PROVIDER = _str("LLM_PROVIDER", "mock").lower()  # mock | bedrock | anthropi
 AWS_REGION = _str("AWS_REGION", "ap-south-1")
 
 _DEFAULT_MODELS = {
-    "anthropic": ("claude-haiku-4-5-20251001", "claude-sonnet-5-5"),
-    "bedrock": ("anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5-v1:0"),
+    "anthropic": ("claude-haiku-5-5", "claude-sonnet-5-5"),
+    "bedrock": ("", ""),  # env-only: set LIGHT_MODEL_ID / STRONG_MODEL_ID
     "mock": ("mock-light", "mock-strong"),
 }
 _light, _strong = _DEFAULT_MODELS.get(LLM_PROVIDER, _DEFAULT_MODELS["mock"])
 LIGHT_MODEL_ID = _str("LIGHT_MODEL_ID", _light)
 STRONG_MODEL_ID = _str("STRONG_MODEL_ID", _strong)
+# Embeddings are independent of LLM_PROVIDER: similarity thresholds are tuned on "hashed".
+EMBED_PROVIDER = _str("EMBED_PROVIDER", "hashed").lower()  # hashed | bedrock
 EMBED_MODEL_ID = _str("EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
 
 POLICY_MIN_SCORE = _float("POLICY_MIN_SCORE", 0.35)

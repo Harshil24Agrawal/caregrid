@@ -48,6 +48,26 @@ def parse_json_tolerant(raw: str) -> dict:
     return out
 
 
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Embed by config.EMBED_PROVIDER, never by LLM_PROVIDER."""
+    provider = config.EMBED_PROVIDER
+    if provider == "hashed":
+        return [hashed_embedding(t) for t in texts]
+    if provider == "bedrock":
+        import boto3
+
+        client = boto3.client("bedrock-runtime", region_name=config.AWS_REGION)
+        out = []
+        for t in texts:
+            resp = client.invoke_model(
+                modelId=config.EMBED_MODEL_ID,
+                body=json.dumps({"inputText": t, "dimensions": EMBED_DIM, "normalize": True}),
+            )
+            out.append(json.loads(resp["body"].read())["embedding"])
+        return out
+    raise ValueError(f"unknown EMBED_PROVIDER {provider!r} (expected hashed | bedrock)")
+
+
 class LLM(Protocol):
     calls: list[str]  # tier of every call made, for cost metrics
 
@@ -103,7 +123,7 @@ class MockLLM(_JsonRetryMixin):
         return self._respond(system, user)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        return [hashed_embedding(t) for t in texts]
+        return embed_texts(texts)
 
     # -- behaviours
     def _respond(self, system: str, user: str) -> dict:
@@ -158,19 +178,12 @@ class BedrockLLM(_JsonRetryMixin):
         return "".join(b.get("text", "") for b in resp["output"]["message"]["content"])
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        out = []
-        for t in texts:
-            resp = self._client.invoke_model(
-                modelId=config.EMBED_MODEL_ID,
-                body=json.dumps({"inputText": t, "dimensions": EMBED_DIM, "normalize": True}),
-            )
-            out.append(json.loads(resp["body"].read())["embedding"])
-        return out
+        return embed_texts(texts)
 
 
 # ---------------------------------------------------------------- anthropic
 class AnthropicLLM(_JsonRetryMixin):
-    """Anthropic has no embeddings endpoint, so embed() uses the deterministic hashed embedding."""
+    """Anthropic has no embeddings endpoint; embed() follows EMBED_PROVIDER like every provider."""
 
     def __init__(self) -> None:
         import anthropic
@@ -187,7 +200,7 @@ class AnthropicLLM(_JsonRetryMixin):
         return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        return [hashed_embedding(t) for t in texts]
+        return embed_texts(texts)
 
 
 def get_llm() -> LLM:
