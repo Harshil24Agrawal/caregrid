@@ -1,4 +1,4 @@
-# CareOps — The Healthcare Operations Second Brain
+# CareGrid — The Healthcare Operations Second Brain
 
 > **AI prepares the decision. Humans own the decision. Workflows execute the approved action.**
 > Tagline: *"AI understands the context. Humans own the decision."*
@@ -109,7 +109,7 @@ The AI assistant **inherits the user's role**. If a user can't see something, ne
 
 ## 4. Solution Overview
 
-**CareOps** is a healthcare operations **Second Brain** with an **agentic reasoning layer** and a **human-governed workflow**.
+**CareGrid** is a healthcare operations **Second Brain** with an **agentic reasoning layer** and a **human-governed workflow**.
 
 ```text
 Fragmented data (requests, policies, workflows, routing rules, field defs,
@@ -140,7 +140,7 @@ Verified decision → Precedent / Knowledge PR → back into the Second Brain
 
 ## 5. Why a Second Brain and Not a RAG Chatbot
 
-| | Conventional RAG | CareOps Second Brain |
+| | Conventional RAG | CareGrid Second Brain |
 |---|---|---|
 | When work happens | Search raw chunks on every question | Compile raw sources **once** into organized, linked pages; query the pages |
 | What is retrieved | Random text fragments | Approved, versioned **policy, workflow, team, field and precedent pages** with links between them |
@@ -214,7 +214,7 @@ Raw data → Validate (schema, field defs) → Detect PHI/PII → Mask → Struc
 
 **What it remembers** (mapped to Acentra's slide):
 
-| Slide category | Page type in CareOps | Source |
+| Slide category | Page type in CareGrid | Source |
 |---|---|---|
 | Policies | `policy/` (versioned, effective date, owner) | Approved knowledge articles |
 | Business rules | `routing/` + rules in policy pages | Routing rules |
@@ -278,7 +278,7 @@ Collected document in one round, validated NPI, routed to Enrollment. Closed sam
 
 Example request: *"Doctor wants to update billing address, here's his NPI."*
 
-| Step | What CareOps does |
+| Step | What CareGrid does |
 |---|---|
 | 1. **Retrieve** | Dual retrieval: Policy (KA-12 v3, WF-03) + Precedent (P-91, P-88) via hybrid search |
 | 2. **Interpret** | Request type = `provider_address_change`; entities: NPI provided; urgency: normal; sentiment: neutral |
@@ -491,11 +491,11 @@ Guardrails are **deterministic code around the LLM**, not just prompt instructio
 
 ```text
 User: Show me the confidential details of another patient's case.
-CareOps: ACCESS RESTRICTED — you don't have permission to view this information.
+CareGrid: ACCESS RESTRICTED — you don't have permission to view this information.
          I've logged the request. Contact: Compliance Team.
 
 User: Should this patient take a higher dose?
-CareOps: I can't give medical advice. I've routed this to Clinical Review (reason: CLINICAL)
+CareGrid: I can't give medical advice. I've routed this to Clinical Review (reason: CLINICAL)
          with a summary so they don't need to ask you again.
 ```
 
@@ -523,7 +523,7 @@ Delivery status → Audit log
 - Human-provided official contact (email/phone/WhatsApp) appended to every outgoing message.
 
 ```text
-CareOps — Case #1024
+CareGrid — Case #1024
 Status: Approved
 Next step: Equipment procurement will begin.
 For queries: operations@hospital.example · +91 XXXXX XXXXX
@@ -570,7 +570,7 @@ For queries: operations@hospital.example · +91 XXXXX XXXXX
 ### End-to-end journey (CASE-1024)
 
 1. Employee opens CASE-1024 (equipment request above cost threshold).
-2. CareOps assembles profile, request, policy, precedents, billing, logs, JIRA, runbook.
+2. CareGrid assembles profile, request, policy, precedents, billing, logs, JIRA, runbook.
 3. Second Brain summary + Context Graph.
 4. Risk = High (policy threshold exceeded; similar precedent required senior review).
 5. Recommendation: *Route to Senior Operations Review*, confidence breakdown shown.
@@ -679,7 +679,7 @@ We create the synthetic workbook ourselves (no real data).
 | Comms | SNS email (real) · WhatsApp/SMS simulated |
 
 ```text
-careops/
+caregrid/
 ├── data/synthetic/          # generated workbook (CSV/JSON)
 ├── brain/                   # compiled Second Brain pages
 │   ├── policy/ workflow/ team/ field/ precedent/ regulatory/
@@ -698,7 +698,7 @@ careops/
 
 ## 16. Evaluation — How We Prove It Works
 
-Run every synthetic request through CareOps and score against expected labels.
+Run every synthetic request through CareGrid and score against expected labels.
 
 | Metric | What it proves |
 |---|---|
@@ -815,4 +815,4 @@ Priority if time runs short: **P1** end-to-end chain + approval + audit + preced
 
 ## 22. One-Sentence Pitch
 
-> **CareOps is a healthcare operations Second Brain that turns scattered policies, workflows and past decisions into a living, versioned knowledge base, reasons over policy and precedent to give cited, confidence-scored recommendations, routes every risky or uncertain case to the right human with full context, earns autonomy only through verified human agreement, and turns every approved decision into reusable organizational knowledge — built on a free-tier AWS architecture ready for both the USA and India.**
+> **CareGrid is a healthcare operations Second Brain that turns scattered policies, workflows and past decisions into a living, versioned knowledge base, reasons over policy and precedent to give cited, confidence-scored recommendations, routes every risky or uncertain case to the right human with full context, earns autonomy only through verified human agreement, and turns every approved decision into reusable organizational knowledge — built on a free-tier AWS architecture ready for both the USA and India.**

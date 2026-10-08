@@ -1,6 +1,6 @@
 # CONTRACTS.md — Data models, interfaces & formulas (source of truth)
 
-All models live in `careops/models.py` (pydantic v2). All modules exchange these models only.
+All models live in `caregrid/models.py` (pydantic v2). All modules exchange these models only.
 
 ---
 
@@ -250,7 +250,7 @@ class LintFinding(BaseModel):
 ## 3. Module interfaces (signatures are fixed)
 
 ```python
-# careops/llm.py
+# caregrid/llm.py
 class LLM(Protocol):
     def complete_json(self, system: str, user: str, tier: Literal["light", "strong"]) -> dict: ...
     def complete_text(self, system: str, user: str, tier: Literal["light", "strong"]) -> str: ...
@@ -259,7 +259,7 @@ def get_llm() -> LLM          # by config.LLM_PROVIDER: "mock" | "bedrock" | "an
 # MockLLM: deterministic keyword rules for classify/propose; hashed bag-of-words (512-d) embeddings.
 # Every call records tier used (for cost metrics).
 
-# careops/store.py
+# caregrid/store.py
 class Store(Protocol):
     def save_case(self, case: Case) -> None; def get_case(self, case_id: str) -> Case | None
     def list_cases(self, **filters) -> list[Case]
@@ -270,18 +270,18 @@ class Store(Protocol):
     def next_case_id(self) -> str
 class SQLiteStore(Store): ...  # JSON blobs per table: cases, audit, trust, prs, comms
 
-# careops/rbac.py
+# caregrid/rbac.py
 def can_view(user: User, case: Case, section: Literal["summary","profile","billing","logs","full"]) -> bool
 def can_approve(user: User, case: Case) -> bool
 def visible_cases(user: User, store: Store) -> list[Case]
 
-# careops/ingest/
+# caregrid/ingest/
 def generate(out_dir: Path, seed: int = 42) -> None                       # generate.py
 def anonymize(text: str) -> tuple[str, list[str]]                          # anonymize.py -> (masked, pii_types)
 def compile_brain(data_dir: Path, brain_dir: Path) -> dict                 # compile.py -> counts per page type
 def leak_scan(brain_dir: Path) -> list[LintFinding]                        # leakscan.py
 
-# careops/knowledge/brain.py
+# caregrid/knowledge/brain.py
 class Brain:
     def __init__(self, brain_dir: Path)
     def get(self, page_id: str, version: int | None = None) -> Page | None    # None version = current approved
@@ -294,12 +294,12 @@ class Brain:
     def mark_stale_for_policy(self, policy_id: str, current_version: int) -> list[str]
     def append_log(self, actor: str, action: str, page_id: str, reason: str) -> None
     def rebuild_index(self) -> None
-# careops/knowledge/retrieve.py
+# caregrid/knowledge/retrieve.py
 def retrieve(brain: Brain, cls: Classification, masked_text: str, llm: LLM) -> RetrievalResult
-# careops/knowledge/lint.py
+# caregrid/knowledge/lint.py
 def lint(brain: Brain, store: Store | None = None) -> list[LintFinding]
 
-# careops/reasoning/
+# caregrid/reasoning/
 def check_input(text: str, user: User) -> GuardResult                     # guards.py
 def check_output(text: str, user: User) -> tuple[bool, str, list[str]]    # guards.py -> (ok, cleaned, issues)
 def classify(masked_text: str, llm: LLM) -> Classification                # classify.py (light tier + keyword rules)
@@ -310,7 +310,7 @@ def score(cls: Classification, ret: RetrievalResult, rules: RuleResult, p: Propo
 def run(text: str, user: User, store: Store, brain: Brain, llm: LLM,
         channel: Channel = Channel.PORTAL, case_id: str | None = None) -> Case  # pipeline.py
 
-# careops/workflow/
+# caregrid/workflow/
 def decide_route(case: Case, trust: TrustRecord) -> Case                   # routing.py
 def record_review(store: Store, request_type: str, agreed: bool) -> TrustRecord  # trust.py
 def submit_decision(d: ReviewDecision, store: Store, brain: Brain, llm: LLM) -> Case  # decisions.py
@@ -320,7 +320,7 @@ def decide_pr(pr_id: str, approve: bool, user: User, store: Store, brain: Brain)
 def send_communications(case: Case, d: ReviewDecision, store: Store) -> list[Communication]  # comms.py
 def log(store: Store, event: str, actor: User | None, case_id: str | None, **details) -> None  # audit.py
 
-# careops/insights/metrics.py
+# caregrid/insights/metrics.py
 def dashboard_counts(store) -> dict
 def gap_radar(store) -> list[dict]       # rows: request_type, reason_code, count, avg_hours_in_queue, est_hours_saved
 def queue_aging(store) -> list[dict]     # rows: state, team, count, avg_hours, max_hours

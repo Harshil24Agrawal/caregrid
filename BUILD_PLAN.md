@@ -28,7 +28,7 @@ If a phase overruns by >30 min: cut to the simplest version that satisfies "done
 ## Claude Code prompts per phase (copy-paste)
 
 - **P0:** "Read CLAUDE.md, CONTRACTS.md. Scaffold the repo per CLAUDE.md layout. Implement models.py exactly as CONTRACTS §1–2, llm.py with MockLLM + BedrockLLM (+ AnthropicLLM) using config, SQLiteStore, cli.py stub, requirements.txt, and a smoke test. Don't implement later phases."
-- **P1:** "Implement careops/ingest per DATA_SPEC.md and CONTRACTS §3: generate.py (all files, planted conditions), anonymize.py (regex + optional Presidio, stable tokens), compile.py (markdown+frontmatter pages, index.md, log.md, precedents with STALE check), leakscan.py. Add tests asserting P-88 is stale and leak scan is clean."
+- **P1:** "Implement caregrid/ingest per DATA_SPEC.md and CONTRACTS §3: generate.py (all files, planted conditions), anonymize.py (regex + optional Presidio, stable tokens), compile.py (markdown+frontmatter pages, index.md, log.md, precedents with STALE check), leakscan.py. Add tests asserting P-88 is stale and leak scan is clean."
 - **P2:** "Implement knowledge/brain.py, retrieve.py (CONTRACTS §10–11), lint.py. Tests: address-change retrieval links KA-12 v3, returns P-91/92/93 active and P-88 stale; lint finds the 4 planted issues."
 - **P3:** "Implement reasoning/guards.py, rules.py, confidence.py per CONTRACTS §4–8. Unit-test every confidence component and every hard override."
 - **P4:** "Implement classify.py, propose.py, citations.py, pipeline.py with prompts from PROMPTS.md and the two-level rule (§6). Implement `cli demo` running the 6 acceptance scenarios and printing case summaries."
@@ -52,7 +52,7 @@ If a phase overruns by >30 min: cut to the simplest version that satisfies "done
 
 ## Midnight checklist
 
-- [ ] `python -m careops.cli reset` gives a clean, repeatable state
+- [ ] `python -m caregrid.cli reset` gives a clean, repeatable state
 - [ ] S1–S6 pass in UI (twice)
 - [ ] `pytest -q` green with mock LLM
 - [ ] No raw PII in SQLite or `second_brain/` (leak scan = 0)

@@ -1,8 +1,8 @@
-# CLAUDE.md — CareOps (read this first, every session)
+# CLAUDE.md — CareGrid (read this first, every session)
 
 ## What we are building
 
-**CareOps** — a healthcare operations **Second Brain** + agentic reasoning + human-governed workflow, for the
+**CareGrid** — a healthcare operations **Second Brain** + agentic reasoning + human-governed workflow, for the
 Acentra Health Hackathon final round (Problem 1: AI-Powered Healthcare Operations Assistant).
 
 > AI prepares the decision. Humans own the decision. Workflows execute the approved action.
@@ -36,9 +36,9 @@ If something is missing or ambiguous, choose the simplest option that keeps the 
 
 ## Tech stack
 
-- Python 3.11 (conda env `careops`), Streamlit UI, SQLite (local), markdown pages with YAML frontmatter.
+- Python 3.11 (conda env `caregrid`), Streamlit UI, SQLite (local), markdown pages with YAML frontmatter.
 - Retrieval: `rank-bm25` + embeddings (cosine via numpy) + link traversal + structured filters.
-- LLM: provider switch in `careops/config.py` → `mock` (deterministic, for tests/offline) | `bedrock` | `anthropic`.
+- LLM: provider switch in `caregrid/config.py` → `mock` (deterministic, for tests/offline) | `bedrock` | `anthropic`.
   Two tiers: `light` (classification/extraction) and `strong` (proposal/explanation/PR drafts).
 - Anonymization: regex masker always on; Microsoft Presidio if installed.
 - Cloud (after midnight): AWS Lambda, DynamoDB, Step Functions, SNS, S3, Bedrock — **free tier + credits only**.
@@ -47,7 +47,7 @@ If something is missing or ambiguous, choose the simplest option that keeps the 
 ## Repo layout
 
 ```text
-careops/
+caregrid/
   config.py            # env-driven settings (LLM_PROVIDER, model ids, paths, thresholds)
   models.py            # ALL pydantic models + enums from CONTRACTS.md
   llm.py               # LLM interface + mock/bedrock/anthropic providers + embeddings
@@ -58,7 +58,7 @@ careops/
   reasoning/           # guards.py, classify.py, rules.py, propose.py, citations.py, confidence.py, pipeline.py
   workflow/            # routing.py, trust.py, decisions.py, precedents.py, prs.py, comms.py, audit.py
   insights/            # metrics.py (dashboard, gap radar, queue aging, trust overview)
-  cli.py               # python -m careops.cli <command>
+  cli.py               # python -m caregrid.cli <command>
 app/                   # Streamlit: Home.py + pages/ + components/assistant.py
 data/synthetic/        # generated CSV/JSON (raw, contains fake PII on purpose)
 second_brain/          # compiled pages: policy/ workflow/ team/ field/ precedent/ regulatory/ runbook/ + index.md + log.md
@@ -69,14 +69,14 @@ eval/                  # requests_eval.csv + run_eval.py
 ## Commands
 
 ```bash
-conda create -n careops python=3.11 -y && conda activate careops
+conda create -n caregrid python=3.11 -y && conda activate caregrid
 pip install -r requirements.txt
-python -m careops.cli data      # generate synthetic data
-python -m careops.cli brain     # anonymize + compile second_brain/ + leak scan
-python -m careops.cli lint      # lint report
-python -m careops.cli reset     # wipe sqlite + recompile brain (clean demo state)
-python -m careops.cli demo      # run the 6 acceptance scenarios headless
-python -m careops.cli eval      # run evaluation scorecard
+python -m caregrid.cli data      # generate synthetic data
+python -m caregrid.cli brain     # anonymize + compile second_brain/ + leak scan
+python -m caregrid.cli lint      # lint report
+python -m caregrid.cli reset     # wipe sqlite + recompile brain (clean demo state)
+python -m caregrid.cli demo      # run the 6 acceptance scenarios headless
+python -m caregrid.cli eval      # run evaluation scorecard
 pytest -q                       # tests (mock LLM)
 streamlit run app/Home.py
 ```
