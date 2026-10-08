@@ -201,6 +201,8 @@ def decide_code(rules: RuleResult, ret: RetrievalResult, cls: Classification) ->
     if rules.risk in (Risk.HIGH, Risk.CRITICAL):
         return DecisionCode.ESCALATE_SENIOR
     has_policy = bool(relevant_policies(ret))
+    if cls.request_type == "general_policy_question" and not has_policy:
+        return DecisionCode.NOT_ENOUGH_EVIDENCE      # an answer needs a cited policy (cite-or-abstain), whatever the precedents say
     if not has_policy and not similar_precedents(ret):
         return DecisionCode.NOT_ENOUGH_EVIDENCE
     if cls.request_type == "general_policy_question" and has_policy:

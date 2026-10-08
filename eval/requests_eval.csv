@@ -58,3 +58,7 @@ EV-56,I have a problem,U1,unknown,human,TEAM-OPS-TRIAGE,UNCLEAR_INTENT,,false
 EV-57,Can you look at this?,U1,unknown,human,TEAM-OPS-TRIAGE,UNCLEAR_INTENT,,false
 EV-58,urgent!!,U1,unknown,human,TEAM-OPS-TRIAGE,UNCLEAR_INTENT,,false
 EV-59,Something is wrong with my account,U1,unknown,human,TEAM-OPS-TRIAGE,UNCLEAR_INTENT,,false
+EV-60,What's on the cafeteria menu?,U1,unknown,human,TEAM-OPS-TRIAGE,UNCLEAR_INTENT;POLICY_GAP,,false
+EV-61,How do I file my income tax?,U1,general_policy_question,human,TEAM-OPS-TRIAGE,POLICY_GAP,,false
+EV-62,What is the policy on telehealth provider credentialing?,U1,general_policy_question,human,TEAM-OPS-TRIAGE,POLICY_GAP,,false
+EV-63,Can you explain our parking rules?,U1,unknown,human,TEAM-OPS-TRIAGE,UNCLEAR_INTENT;POLICY_GAP,,false

@@ -61,16 +61,21 @@ def field_page_id(field: str) -> str:
     return "FIELD-" + field.upper().replace("_", "-")
 
 
-def derive_case_facts(wf: Page | None, cls: Classification) -> dict[str, str]:
-    """category / missing / risk / team from workflow meta + extracted fields (decision P0-a, refined in P2)."""
+def derive_case_facts(wf: Page | None, cls: Classification, topic: str | None = None) -> dict[str, str]:
+    """category / missing / risk / team from workflow meta + extracted fields (decision P0-a, refined in P2).
+    For general_policy_question `topic` (id of the top relevant POLICY page, or "none") is added as a fifth fact (P4.1)."""
     if wf is None:
-        return {"category": REQUEST_CATEGORY.get(cls.request_type, "unknown"), "missing": "none", "risk": "low",
-                "team": "TEAM-OPS-TRIAGE"}
-    have = {k for k, v in cls.extracted_fields.items() if v}
-    have |= {FIELD_ALIASES[k] for k in have if k in FIELD_ALIASES}
-    missing = [f for f in wf.meta.get("required_fields", []) if f not in have]
-    return {"category": REQUEST_CATEGORY.get(cls.request_type, "unknown"), "missing": facts_missing(missing),
-            "risk": str(wf.meta.get("risk", "low")), "team": str(wf.meta.get("team", "TEAM-OPS-TRIAGE"))}
+        facts = {"category": REQUEST_CATEGORY.get(cls.request_type, "unknown"), "missing": "none", "risk": "low",
+                 "team": "TEAM-OPS-TRIAGE"}
+    else:
+        have = {k for k, v in cls.extracted_fields.items() if v}
+        have |= {FIELD_ALIASES[k] for k in have if k in FIELD_ALIASES}
+        missing = [f for f in wf.meta.get("required_fields", []) if f not in have]
+        facts = {"category": REQUEST_CATEGORY.get(cls.request_type, "unknown"), "missing": facts_missing(missing),
+                 "risk": str(wf.meta.get("risk", "low")), "team": str(wf.meta.get("team", "TEAM-OPS-TRIAGE"))}
+    if cls.request_type == "general_policy_question" and topic is not None:
+        facts["topic"] = topic
+    return facts
 
 
 def facts_match(case_facts: dict[str, str], prec_facts: dict[str, str]) -> float:
@@ -79,41 +84,56 @@ def facts_match(case_facts: dict[str, str], prec_facts: dict[str, str]) -> float
     return sum(prec_facts.get(k) == v for k, v in case_facts.items()) / len(case_facts)
 
 
+_MASK_TOKEN = re.compile(r"\[[A-Z_]+\d*\]")
+
+
 def _search_scores(candidates: list[Page], query: str, llm: LLM) -> dict[str, float]:
-    """combined = 0.5 * bm25_norm + 0.5 * cosine, keyed by page id (candidates are current approved pages)."""
+    """Absolute relevance in 0..1, keyed by page id: 0.5 * bm25_abs + 0.5 * cosine (candidates are current approved pages).
+
+    bm25_abs = BM25 score / the score an AVERAGE-LENGTH page would get if it contained every query term once
+    (= sum of the query terms' idf; a term the corpus has never seen counts at the corpus' maximum idf), clipped to 0..1.
+    Unlike normalising by the best page in the corpus, an unrelated best hit therefore stays low: it covers few query terms.
+    Mask tokens such as [PERSON_1] are removed from the query first (they are not content)."""
     if not candidates:
         return {}
     texts = [f"{p.title}. {p.body}" for p in candidates]
-    q_tokens = tokenize(query)
-    bm = np.zeros(len(candidates))
+    q_text = _MASK_TOKEN.sub(" ", query)
+    q_tokens = tokenize(q_text)
+    bm_abs = np.zeros(len(candidates))
     if q_tokens:
-        bm = np.asarray(BM25Okapi([tokenize(t) for t in texts]).get_scores(q_tokens), dtype=float)
-    bm = np.clip(bm, 0, None)
-    bm_norm = bm / bm.max() if bm.max() > 0 else bm
-    q_vec = llm.embed([query])[0]
+        bm = BM25Okapi([tokenize(t) for t in texts])
+        idf_max = max(bm.idf.values(), default=0.0)
+        achievable = sum(max(bm.idf.get(t, idf_max), 0.0) for t in q_tokens)
+        if achievable > 0:
+            bm_abs = np.clip(np.asarray(bm.get_scores(q_tokens), dtype=float) / achievable, 0.0, 1.0)
+    q_vec = llm.embed([q_text])[0]
     cos = [max(_cosine(q_vec, d), 0.0) for d in _embed_docs(llm, texts)]
-    return {p.id: 0.5 * float(bm_norm[i]) + 0.5 * cos[i] for i, p in enumerate(candidates)}
+    return {p.id: 0.5 * float(bm_abs[i]) + 0.5 * cos[i] for i, p in enumerate(candidates)}
 
 
 def retrieve(brain: Brain, cls: Classification, masked_text: str, llm: LLM) -> RetrievalResult:
     wf = brain.workflow_for(cls.request_type)
     team = brain.team(str(wf.meta.get("team"))) if wf else None
     fields = [p for f in (wf.meta.get("required_fields", []) if wf else []) if (p := brain.get(field_page_id(f))) is not None]
-    case_facts = derive_case_facts(wf, cls)
 
     # ---- policies (+ regulatory, runbook) -- approved & current only
     candidates = brain.current_pages(PageType.POLICY, PageType.REGULATORY, PageType.RUNBOOK)
     combined = _search_scores(candidates, masked_text, llm)
     by_id = {p.id: p for p in candidates}
+    relevant_policy_ids = sorted((p.id for p in candidates if p.type == PageType.POLICY and combined[p.id] >= config.POLICY_MIN_SCORE),
+                                 key=lambda i: (-combined[i], i))
+    topic = relevant_policy_ids[0] if relevant_policy_ids else "none"
+    case_facts = derive_case_facts(wf, cls, topic)
 
     linked_ids = [pid for pid in (wf.meta.get("policy_ids", []) if wf else []) if pid in by_id and by_id[pid].type == PageType.POLICY]
-    chosen: list[tuple[Page, float, bool]] = [(by_id[pid], combined[pid] + LINK_BOOST, True) for pid in linked_ids]
+    chosen: list[tuple[Page, float, bool]] = [(by_id[pid], combined[pid] + LINK_BOOST, True) for pid in linked_ids]   # boost: ranking only
     search_only = sorted(((p, combined[p.id]) for p in candidates if p.id not in linked_ids and combined[p.id] >= SEARCH_FLOOR),
                          key=lambda x: (-x[1], x[0].id))
     chosen += [(p, s, False) for p, s in search_only[: max(TOP_K - len(chosen), 0)]]
     chosen.sort(key=lambda x: (-x[1], x[0].id))
 
-    policies = [ScoredPage(page=p, score=round(s, 4), linked=l) for p, s, l in chosen if p.type != PageType.REGULATORY]
+    policies = [ScoredPage(page=p, score=round(s, 4), linked=l, relevance=round(combined[p.id], 4))
+                for p, s, l in chosen if p.type != PageType.REGULATORY]
     regulatory = [p for p, _, _ in chosen if p.type == PageType.REGULATORY]
 
     # ---- precedents: hard filter on request_type; similarity = 0.6 facts + 0.4 cosine

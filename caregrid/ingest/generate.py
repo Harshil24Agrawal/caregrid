@@ -125,7 +125,7 @@ ROUTING_RULES = [
 ARTICLE_COLS = ["id", "version", "title", "body", "status", "effective_from", "owner", "request_types", "rule_key", "rule_value"]
 ARTICLES = [
     ("KA-01", 1, "Operations request basics",
-     "Submit every operations request through the portal. Standard requests are acknowledged within 1 business day. "
+     "Submit every operations request through the portal. SLA and turnaround: standard requests are acknowledged within 1 business day. "
      "Forms for provider updates are on the Operations intranet under Forms. Always include the provider NPI where one applies.",
      "approved", "2026-01-01", "TEAM-OPS-TRIAGE", "general_policy_question", "", ""),
     ("KA-02", 1, "Supporting documents accepted",
@@ -295,6 +295,8 @@ def _historical(g: _Gen, prof: dict) -> list[list]:
     def add(pid, rtype, text, facts_extra, provided, decision, team, policy, pver, reasons, approver, risk, when, outcome):
         facts = {"category": REQUEST_CATEGORY[rtype], "missing": facts_extra.get("missing", "none"),
                  "risk": risk, "team": team or "TEAM-OPS-TRIAGE"}
+        if rtype == "general_policy_question":
+            facts["topic"] = policy or "none"          # POLICY_GAP precedents have no policy: topic "none"
         rows.append([pid, rtype, text, json.dumps(facts, ensure_ascii=False), ";".join(provided), decision, team or "",
                      policy or "", pver if pver else "", ";".join(reasons), approver, risk, when, outcome])
 
@@ -525,6 +527,11 @@ def _eval_rows() -> list[list]:
     # vague
     for t in ["help", "I have a problem", "Can you look at this?", "urgent!!", "Something is wrong with my account"]:
         r(t, "u", reasons="UNCLEAR_INTENT")
+    # off-topic or uncovered questions: no approved policy answers them -> abstain, record a policy gap, send to a human
+    r("What's on the cafeteria menu?", "u", reasons="UNCLEAR_INTENT;POLICY_GAP")
+    r("How do I file my income tax?", "g", reasons="POLICY_GAP")
+    r("What is the policy on telehealth provider credentialing?", "g", reasons="POLICY_GAP")
+    r("Can you explain our parking rules?", "u", reasons="UNCLEAR_INTENT;POLICY_GAP")
     return [[f"EV-{i + 1:02d}", *row] for i, row in enumerate(R)]
 
 

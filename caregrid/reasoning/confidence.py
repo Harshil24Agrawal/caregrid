@@ -15,10 +15,10 @@ def band_for(score: int) -> Band:
 
 
 def relevant_policies(ret: RetrievalResult) -> list[ScoredPage]:
-    """Approved current POLICY pages that count as evidence: workflow-linked, or found by search above the minimum."""
+    """Approved current POLICY pages that count as evidence: their relevance to THIS query reaches POLICY_MIN_SCORE.
+    Being linked from the workflow is not enough on its own (P4.1)."""
     return [s for s in ret.policies
-            if s.page.type == PageType.POLICY and s.page.status == PageStatus.APPROVED
-            and (s.linked or s.score >= config.POLICY_MIN_SCORE)]
+            if s.page.type == PageType.POLICY and s.page.status == PageStatus.APPROVED and s.relevance >= config.POLICY_MIN_SCORE]
 
 
 def similar_precedents(ret: RetrievalResult) -> list[ScoredPrecedent]:

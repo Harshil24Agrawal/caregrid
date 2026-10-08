@@ -30,14 +30,16 @@ def decide_route(case: Case, trust: TrustRecord) -> Case:
 
     if rules.hard_override:
         set_state(case, State.IN_REVIEW)
-    elif conf.band == Band.LOW:
+    elif conf.band == Band.LOW or prop.decision_code == DecisionCode.NOT_ENOUGH_EVIDENCE:
+        # An abstention is never automatic, whatever the band. A decision that was ALREADY not_enough_evidence (no relevant
+        # policy for a general question, or every policy citation failed verification) is a policy gap by definition;
+        # a LOW band that merely forced the abstention is a gap only when no policy scored.
+        abstained = prop.decision_code == DecisionCode.NOT_ENOUGH_EVIDENCE
         case.proposal = prop.model_copy(update={"decision_code": DecisionCode.NOT_ENOUGH_EVIDENCE,
                                                 "answer_text": not_enough_evidence_text(rules.route_team),
                                                 "questions_for_requester": []})
         _add(case, ReasonCode.LOW_CONFIDENCE)
-        has_policy = conf.breakdown.get("policy", 0) > 0
-        known_type = bool(case.classification and case.classification.request_type != "unknown")
-        if not has_policy and known_type:               # an unknown/vague request is an intent problem, not a policy gap
+        if abstained or conf.breakdown.get("policy", 0) == 0:
             _add(case, ReasonCode.POLICY_GAP)
         set_state(case, State.IN_REVIEW)
     elif rules.missing_fields or rules.invalid_fields:

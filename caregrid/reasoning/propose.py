@@ -16,7 +16,7 @@ from caregrid import config
 from caregrid.ingest.leakscan import detect_pii
 from caregrid.llm import LLM, call_with_timeout
 from caregrid.models import (
-    Citation, Classification, DecisionCode, PageType, Proposal, ReasonCode, RetrievalResult, Risk, RuleResult,
+    Citation, Classification, DecisionCode, PageStatus, PageType, Proposal, ReasonCode, RetrievalResult, Risk, RuleResult,
 )
 from caregrid.reasoning.confidence import relevant_policies, similar_precedents
 from caregrid.reasoning.guards import _MEDICAL_ADVICE, CLINICAL
@@ -52,9 +52,13 @@ class CtxItem:
         return f"[{self.id} v{self.version} | {self.type.value} | {self.title}]"
 
 
-def build_context(ret: RetrievalResult) -> list[CtxItem]:
-    """Approved current policies + workflow + team + ACTIVE similar precedents. Stale precedents never appear here."""
-    items = [CtxItem(s.page.id, s.page.version, PageType.POLICY, s.page.title, s.page.body) for s in relevant_policies(ret)]
+def build_context(ret: RetrievalResult, rules: RuleResult | None = None) -> list[CtxItem]:
+    """Relevant approved current policies + workflow + team + ACTIVE similar precedents. Stale precedents never appear here.
+    A policy named in a conflict is always included, even if it is below the relevance bar: the reviewer must see both sides."""
+    in_conflict = " ".join(rules.conflicts) if rules else ""
+    shown = [s for s in ret.policies if s.page.type == PageType.POLICY and s.page.status == PageStatus.APPROVED
+             and (s.relevance >= config.POLICY_MIN_SCORE or re.search(rf"\b{re.escape(s.page.id)}\b", in_conflict))]
+    items = [CtxItem(s.page.id, s.page.version, PageType.POLICY, s.page.title, s.page.body) for s in shown]
     if ret.workflow:
         w = ret.workflow
         items.append(CtxItem(w.id, w.version, PageType.WORKFLOW, w.title, w.body))
@@ -68,8 +72,8 @@ def build_context(ret: RetrievalResult) -> list[CtxItem]:
     return items
 
 
-def context_ids(ret: RetrievalResult) -> set[str]:
-    return {c.id for c in build_context(ret)}
+def context_ids(ret: RetrievalResult, rules: RuleResult | None = None) -> set[str]:
+    return {c.id for c in build_context(ret, rules)}
 
 
 def rules_block(rules: RuleResult, decision: DecisionCode, team: str | None) -> str:
@@ -252,7 +256,7 @@ def propose(masked_text: str, cls: Classification, ret: RetrievalResult, rules: 
             explain: bool = False) -> Proposal:
     decision = decide_code(rules, ret, cls)
     team = rules.route_team
-    ctx = build_context(ret)
+    ctx = build_context(ret, rules)
     questions = build_questions(rules, ret)
     answer, steps, summary = deterministic_wording(decision, cls, ret, rules, ctx, questions)
     llm_ids: list[str] = []

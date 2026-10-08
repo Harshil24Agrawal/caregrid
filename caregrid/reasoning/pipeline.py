@@ -112,7 +112,10 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
 
     # 3 retrieve
     ret = retrieve(brain, cls, guard.masked_text, llm)
-    ctx = build_context(ret)
+    rules = apply_rules(cls, ret, brain, guard)             # computed here: a conflicting policy joins the context
+    if cls.model_used == FALLBACK_MODEL and "llm_fallback" not in rules.notes:
+        rules.notes.append("llm_fallback")
+    ctx = build_context(ret, rules)
     case.citations_considered = [Citation(page_id=c.id, version=c.version, page_type=c.type, title=c.title) for c in ctx]
     log(store, "context_assembled", None, case_id, workflow=ret.workflow.id if ret.workflow else None,
         team=ret.team.id if ret.team else None, context=[c.id for c in ctx], case_facts=ret.case_facts)
@@ -122,17 +125,14 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
         active=[[s.precedent.id, s.similarity] for s in ret.precedents_active[:5]],
         stale=[s.precedent.id for s in ret.precedents_stale])
 
-    # 4 rules
-    rules = apply_rules(cls, ret, brain, guard)
-    if cls.model_used == FALLBACK_MODEL and "llm_fallback" not in rules.notes:
-        rules.notes.append("llm_fallback")
+    # 4 rules (applied above, logged here to keep the audit order)
     log(store, "rules_applied", None, case_id, risk=rules.risk.value, hard_override=rules.hard_override,
         missing=rules.missing_fields, invalid=sorted(rules.invalid_fields), conflicts=len(rules.conflicts),
         reason_codes=[c.value for c in rules.reason_codes])
 
     # 5-6 propose, then verify every citation against the Brain
     proposal = propose(guard.masked_text, cls, ret, rules, llm)
-    proposal, issues = verify_citations(proposal, brain, context_ids(ret))
+    proposal, issues = verify_citations(proposal, brain, context_ids(ret, rules))
     if DOWNGRADED in issues and ReasonCode.POLICY_GAP not in rules.reason_codes:
         rules.reason_codes = [*rules.reason_codes, ReasonCode.POLICY_GAP]
     log(store, "proposal_generated", None, case_id, decision_code=proposal.decision_code.value, team=proposal.route_team,

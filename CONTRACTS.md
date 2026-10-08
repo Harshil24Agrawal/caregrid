@@ -133,6 +133,7 @@ class Classification(BaseModel):
 
 class ScoredPage(BaseModel):
     page: Page; score: float; linked: bool   # linked = reached via workflow link (not just search)
+    relevance: float                         # 0..1 query relevance WITHOUT the link boost; `score` = relevance (+0.3 if linked) and is used only for ranking
 
 class ScoredPrecedent(BaseModel):
     precedent: Precedent; similarity: float
@@ -353,7 +354,7 @@ def cost_split(store) -> dict            # % requests light-only vs light+strong
 
 | Key | Max | Rule |
 |---|---|---|
-| `policy` | 30 | 30 if ≥1 approved current policy is **linked** from the request type's workflow and retrieved; 15 if a relevant policy found only by search (score ≥ `POLICY_MIN_SCORE`, default 0.35) or only a general policy; 0 otherwise |
+| `policy` | 30 | A policy is **relevant** only if its `relevance` to this query (§11, link boost excluded) is ≥ `POLICY_MIN_SCORE` (default 0.35). 30 if ≥1 approved current policy is **linked** from the request type's workflow **and relevant**; 15 if the only relevant policies were found by search; 0 otherwise. A linked but irrelevant policy earns nothing |
 | `precedent` | 25 | Count active precedents with similarity ≥ `PRECEDENT_MIN_SIM` (0.6) whose `decision_code` **and** `route_team` equal the proposal's: 0→0, 1→15, 2→20, ≥3→25 |
 | `fields` | 20 | `round(20 * valid_present / required)`; 20 if no fields required. Invalid formats count as missing |
 | `clarity` | 15 | 15 if `request_type != "unknown"` and `rules_type == request_type` and `llm_confidence ≥ 0.7`; 8 if only one of those holds; 0 if unknown |
@@ -399,15 +400,21 @@ else:                                           route="human", state=IN_REVIEW
 
 `similarity = 0.6 * facts_match + 0.4 * cosine(embed(summary), embed(masked_text))`
 - Hard filter: same `request_type`.
-- `facts_match` = fraction of keys in the case's facts (`category`, `missing`, `risk`, `team`) that match.
+- `facts_match` = fraction of keys in the case's facts (`category`, `missing`, `risk`, `team`) that match. For `general_policy_question` the facts also hold `topic` = id of the top **relevant** POLICY page (relevance ≥ `POLICY_MIN_SCORE`) or `"none"`; a precedent's `topic` is its `policy_id`, or `"none"` for POLICY_GAP precedents. `topic` exists only for general questions.
 - Precedents whose `policy_version` ≠ current version of `policy_id` are `STALE` → returned in `precedents_stale`, never scored.
 - Stale precedent whose decision differs from current proposal → `rules.notes` entry ("P-88 is stale (KA-12 v2) and skipped the document check"), no score penalty.
 - Active precedent that disagrees with what the current policy requires → `rules.conflicts` + `POLICY_CONFLICT`.
 
 ## 11. Policy retrieval (`knowledge/retrieve.py`)
 
-`combined = 0.5 * bm25_norm + 0.5 * cosine` over approved current policies (+ regulatory, runbook pages).
-Pages linked from the workflow are always included with `linked=True` (+0.3 boost). Return top 5.
+`relevance = 0.5 * bm25_abs + 0.5 * cosine` over approved current policies (+ regulatory, runbook pages), in 0..1.
+`bm25_abs` is an **absolute** scale: `BM25(query, page) / A`, clipped to 0..1, where `A` is the score an average-length page would get if it
+contained every query term once, i.e. the sum of the query terms' idf (a term the corpus has never seen counts at the corpus' maximum idf).
+Mask tokens such as `[PERSON_1]` are removed from the query first. Normalising by the best page in the corpus is NOT used: it gave the top
+hit of any query with one overlapping word a bm25 share of 1.0, so an unrelated article looked relevant.
+Pages linked from the workflow are always returned with `linked=True`; the +0.3 boost applies to the ranking `score` only, never to `relevance`.
+Return top 5. `ScoredPage.relevance` (not `score`) decides whether a policy counts as evidence (§5).
+`decide_code`: a `general_policy_question` with no relevant policy is `not_enough_evidence`, always routed to a human with POLICY_GAP.
 Two approved policies for the same request type with contradictory `meta.rule_key` values → `rules.conflicts`.
 
 ## 12. RBAC (`rbac.py`)

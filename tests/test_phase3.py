@@ -346,20 +346,30 @@ def ret_with(policies=(), precedents=()):
 PROPOSAL = Proposal(decision_code=DecisionCode.ROUTE_TO_TEAM, route_team="TEAM-ENROLL", answer_text="a", summary_for_reviewer="s")
 
 
+def sp_(pg, relevance, linked, boost=0.3):
+    return ScoredPage(page=pg, score=relevance + (boost if linked else 0), linked=linked, relevance=relevance)
+
+
 def test_policy_component():
-    assert C.policy_component(ret_with([ScoredPage(page=page(), score=1.0, linked=True)])) == 30
-    assert C.policy_component(ret_with([ScoredPage(page=page(), score=0.35, linked=False)])) == 15
-    assert C.policy_component(ret_with([ScoredPage(page=page(), score=0.349, linked=False)])) == 0
+    assert C.policy_component(ret_with([sp_(page(), 0.8, True)])) == 30
+    assert C.policy_component(ret_with([sp_(page(), 0.35, True)])) == 30                    # boundary counts
+    assert C.policy_component(ret_with([sp_(page(), 0.35, False)])) == 15
+    assert C.policy_component(ret_with([sp_(page(), 0.349, False)])) == 0
     assert C.policy_component(ret_with([])) == 0
+    # P4.1: a workflow-linked policy earns nothing unless it is relevant to THIS query
+    assert C.policy_component(ret_with([sp_(page(), 0.10, True)])) == 0
+    assert C.policy_component(ret_with([sp_(page(), 0.349, True)])) == 0
+    assert C.relevant_policies(ret_with([sp_(page(), 0.10, True)])) == []
     # runbook / regulatory pages never earn points, even when linked or high-scoring
     for typ in (PageType.RUNBOOK, PageType.REGULATORY):
-        assert C.policy_component(ret_with([ScoredPage(page=page("RB-1", typ), score=0.9, linked=True)])) == 0
-    # a linked policy outranks a search-only one
-    assert C.policy_component(ret_with([ScoredPage(page=page(), score=0.9, linked=False), ScoredPage(page=page("KA-2"), score=0.3, linked=True)])) == 30
+        assert C.policy_component(ret_with([sp_(page("RB-1", typ), 0.9, True)])) == 0
+    # a relevant linked policy outranks a relevant search-only one; an irrelevant linked one does not count at all
+    assert C.policy_component(ret_with([sp_(page(), 0.9, False), sp_(page("KA-2"), 0.5, True)])) == 30
+    assert C.policy_component(ret_with([sp_(page(), 0.5, False), sp_(page("KA-2"), 0.1, True)])) == 15
 
 
 def test_policy_component_uses_config_min_score(monkeypatch):
-    r = ret_with([ScoredPage(page=page(), score=0.5, linked=False)])
+    r = ret_with([sp_(page(), 0.5, False)])
     assert C.policy_component(r) == 15
     monkeypatch.setattr(config, "POLICY_MIN_SCORE", 0.6)
     assert C.policy_component(r) == 0

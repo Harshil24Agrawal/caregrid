@@ -122,6 +122,7 @@ class Classification(BaseModel):
 
 class ScoredPage(BaseModel):
     page: Page; score: float; linked: bool   # linked = reached via workflow link (not just search)
+    relevance: float                         # 0..1 query relevance WITHOUT the link boost; `score` = relevance (+0.3 if linked) and is used only for ranking
 
 class ScoredPrecedent(BaseModel):
     precedent: Precedent; similarity: float

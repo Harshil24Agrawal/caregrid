@@ -341,16 +341,12 @@ def test_downgrade_adds_policy_gap(paths, brain):
 
 
 # ================================================================== eval rows through the whole pipeline
-KNOWN_GAP = {"EV-07"}     # see test_telehealth_gap_question_is_not_auto_answered
-
 
 def test_eval_rows_through_the_pipeline(paths, brain):
     store = new_store(paths)
     users = load_users(paths / "data")
     problems = []
     for r in csv.DictReader(open(paths / "eval" / "requests_eval.csv", encoding="utf-8", newline="")):
-        if r["id"] in KNOWN_GAP:
-            continue
         c = run(r["text"], users[r["requester_id"]], store, brain, MockLLM())
         got_missing = set(c.rules.missing_fields) | set(c.rules.invalid_fields)
         want_reasons = set(filter(None, r["expected_reasons"].split(";")))
@@ -366,13 +362,12 @@ def test_eval_rows_through_the_pipeline(paths, brain):
     assert problems == []
 
 
-@pytest.mark.xfail(strict=True, reason="FINDING: bm25_norm = score/max(score) (CONTRACTS section 11) gives the top search hit >= 0.5 for any "
-                                       "query with one overlapping word, so an unrelated article ('Training and onboarding') clears "
-                                       "POLICY_MIN_SCORE and the telehealth gap question is auto-answered. Needs a formula decision.")
 def test_telehealth_gap_question_is_not_auto_answered(paths, brain):
+    """EV-07: used to be auto-answered at 100 from an unrelated article (fixed in P4.1)."""
     store = new_store(paths)
     c = run("What is the process to onboard a new telehealth practice?", ASHA, store, brain, MockLLM())
-    assert c.routing == "human" and ReasonCode.POLICY_GAP in c.reason_codes
+    assert c.routing == "human" and c.state == State.IN_REVIEW and c.proposal.decision_code == DecisionCode.NOT_ENOUGH_EVIDENCE
+    assert {ReasonCode.POLICY_GAP, ReasonCode.LOW_CONFIDENCE} <= set(c.reason_codes) and c.confidence.breakdown["policy"] == 0
 
 
 # ================================================================== demo + reset
