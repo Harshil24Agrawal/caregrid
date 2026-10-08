@@ -1,0 +1,56 @@
+"""Env-driven settings. Values are read once at import; override via environment or .env."""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(ROOT / ".env", encoding="utf-8")
+
+
+def _str(name: str, default: str) -> str:
+    return os.environ.get(name) or default
+
+
+def _float(name: str, default: float) -> float:
+    return float(os.environ.get(name) or default)
+
+
+def _int(name: str, default: int) -> int:
+    return int(os.environ.get(name) or default)
+
+
+def _path(name: str, default: str) -> Path:
+    p = Path(_str(name, default))
+    return p if p.is_absolute() else ROOT / p
+
+
+LLM_PROVIDER = _str("LLM_PROVIDER", "mock").lower()  # mock | bedrock | anthropic
+AWS_REGION = _str("AWS_REGION", "ap-south-1")
+
+_DEFAULT_MODELS = {
+    "anthropic": ("claude-haiku-4-5-20251001", "claude-sonnet-5-5"),
+    "bedrock": ("anthropic.claude-haiku-4-5-20251001-v1:0", "anthropic.claude-sonnet-5-5-v1:0"),
+    "mock": ("mock-light", "mock-strong"),
+}
+_light, _strong = _DEFAULT_MODELS.get(LLM_PROVIDER, _DEFAULT_MODELS["mock"])
+LIGHT_MODEL_ID = _str("LIGHT_MODEL_ID", _light)
+STRONG_MODEL_ID = _str("STRONG_MODEL_ID", _strong)
+EMBED_MODEL_ID = _str("EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
+
+POLICY_MIN_SCORE = _float("POLICY_MIN_SCORE", 0.35)
+PRECEDENT_MIN_SIM = _float("PRECEDENT_MIN_SIM", 0.6)
+TRUST_L1_STREAK = _int("TRUST_L1_STREAK", 10)
+TRUST_L1_RATIO = _float("TRUST_L1_RATIO", 0.90)
+TRUST_L2_REVIEWS = _int("TRUST_L2_REVIEWS", 25)
+TRUST_L2_RATIO = _float("TRUST_L2_RATIO", 0.95)
+
+DATA_DIR = _path("DATA_DIR", "data/synthetic")
+BRAIN_DIR = _path("BRAIN_DIR", "second_brain")
+DB_PATH = _path("DB_PATH", "data/caregrid.sqlite")
+EVAL_DIR = ROOT / "eval"
+
+STORE_BACKEND = _str("STORE_BACKEND", "sqlite")  # sqlite | dynamodb (later)
+COMMS_EMAIL = _str("COMMS_EMAIL", "simulated")  # simulated | sns (later)

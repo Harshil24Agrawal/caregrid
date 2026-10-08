@@ -10,7 +10,7 @@ Date: Thu 8 Oct 2026 · Builder: Harshil (+ Claude Code) · Teammates review & t
 
 | # | Time (IST) | Phase | Done when |
 |---|---|---|---|
-| 0 | 14:50–15:20 | **Scaffold** | Repo + `requirements.txt` + `config.py` + `models.py` (all of CONTRACTS §1–2) + `llm.py` (mock + bedrock/anthropic) + `store.py` (SQLite) + `cli.py` stub. `pytest` runs. **Bedrock access checked** (if not working by 16:00 → use any LLM key behind `llm.py`) |
+| 0 | 14:50–15:20 | ✅ **Scaffold** (done; Bedrock access NOT yet verified, see Decisions log) | Repo + `requirements.txt` + `config.py` + `models.py` (all of CONTRACTS §1–2) + `llm.py` (mock + bedrock/anthropic) + `store.py` (SQLite) + `cli.py` stub. `pytest` runs. **Bedrock access checked** (if not working by 16:00 → use any LLM key behind `llm.py`) |
 | 1 | 15:20–16:30 | **Data + Ingest + Brain** | `cli data` writes all DATA_SPEC files; `cli brain` masks PII, compiles `second_brain/` (pages, index.md, log.md), P-88 compiled as STALE, leak scan returns 0 findings |
 | 2 | 16:30–17:30 | **Brain store + Retrieval + Lint** | `Brain` loads pages; `retrieve()` returns linked policies + active/stale precedents with similarities; `cli lint` reports CONTRADICTION (KA-31/KA-32), EXPIRED_LINKED (KA-15 in WF-07), STALE_PRECEDENT (P-88), ESCALATION_HOTSPOT (telehealth) |
 | 3 | 17:30–18:40 | **Guards + Rules + Confidence** | Injection, clinical, account-specific, sensitive detection; ID regex validation before masking; required/missing/invalid fields; risk + thresholds; action tier; conflicts/notes; confidence formula with unit tests for each component |
@@ -90,4 +90,12 @@ If a phase overruns by >30 min: cut to the simplest version that satisfies "done
 ## Decisions log
 (Record any deviation from CONTRACTS/DATA_SPEC here with time + reason.)
 
-- 
+- 2026-10-08 P0 (a) Precedent `facts_match`: Case has no facts field, so case facts are derived in `retrieve.py` from Classification + RuleResult: `category` (request-type category), `missing` (sorted missing+invalid fields, or `none`), `risk`, `team`. Precedents are compiled with the same four keys.
+- 2026-10-08 P0 (b) `rules.apply_rules` sets `hard_override=True` when `action_tier == WRITE` (CLAUDE.md rule 3), even though WRITE is not in `HARD_OVERRIDES`; no reason code is added unless one applies.
+- 2026-10-08 P0 (c) Guard emits `validated_fields["npi"]`; the classifier/WF-07 field `provider_npi` is an alias and maps to the same `^\d{10}$` validation.
+- 2026-10-08 P0 (d) S1 data: seeded `general_policy_question` precedents (>=3, `answer_from_policy`, TEAM-OPS-TRIAGE) share facts `category=policy_info, missing=none, risk=low, team=TEAM-OPS-TRIAGE` with summaries close to the S1 question (sim >= 0.6). The 8 telehealth POLICY_GAP precedents use `not_enough_evidence`, `missing=policy`, `risk=medium`, so they neither reach 0.6 nor match the decision. Asserted by a Phase 1/2 test.
+- 2026-10-08 P0 (e) S6 arithmetic: `confidence.score` test (Phase 3) must assert exactly 60 (15+0+20+15+10, Medium) with zero matching precedents, then 75 (precedent 15, High) with exactly one.
+- 2026-10-08 P0 AnthropicLLM has no embeddings endpoint, so `embed()` uses the deterministic hashed embedding. Bedrock embeds with Titan v2 (512-d, normalised) to match.
+- 2026-10-08 P0 Default Bedrock model ids (`anthropic.claude-haiku-4-5-20251001-v1:0`, `anthropic.claude-sonnet-5-5-v1:0`) are unverified guesses. Run `llmcheck` with credentials and override `LIGHT_MODEL_ID`/`STRONG_MODEL_ID` (may need an inference-profile prefix such as `apac.` or `us.`). Gate: if Bedrock is not working by 16:00, use `LLM_PROVIDER=anthropic`.
+- 2026-10-08 P0 `second_brain/` and `data/synthetic/` are git-ignored (generated); `cli reset` regenerates them.
+- 2026-10-08 P0 Windows: only `python -m pip` / `python -m pytest`; pathlib and `encoding="utf-8"` everywhere (data contains the rupee sign).
