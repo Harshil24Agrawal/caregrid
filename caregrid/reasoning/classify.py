@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from caregrid import config
 from caregrid.constants import REQUEST_TYPES
-from caregrid.llm import LLM, call_with_timeout
+from caregrid.llm import LLM, call_with_timeout, model_name
 from caregrid.models import Classification
 from caregrid.reasoning.extract import extract_fields, keyword_type
 from caregrid.reasoning.guards import CLINICAL, SENSITIVE
@@ -68,4 +68,4 @@ def classify(masked_text: str, llm: LLM) -> Classification:
         request_type=rtype, llm_confidence=_clamp01(raw.get("confidence")), rules_type=kw_type if hit else None,
         extracted_fields=fields, urgency=urgency, sentiment=sentiment, is_clinical=_flag(raw.get("is_clinical")),
         is_account_specific=_flag(raw.get("is_account_specific")), is_sensitive=_flag(raw.get("is_sensitive")),
-        model_used=config.LIGHT_MODEL_ID)
+        model_used=model_name(llm, "light"))

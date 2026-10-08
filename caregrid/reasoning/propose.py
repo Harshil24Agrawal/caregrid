@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from caregrid import config
 from caregrid.ingest.leakscan import detect_pii
-from caregrid.llm import LLM, call_with_timeout
+from caregrid.llm import LLM, call_with_timeout, model_name
 from caregrid.models import (
     Citation, Classification, DecisionCode, PageStatus, PageType, Proposal, ReasonCode, RetrievalResult, Risk, RuleResult,
 )
@@ -304,7 +304,7 @@ def propose(masked_text: str, cls: Classification, ret: RetrievalResult, rules: 
                 else:
                     answer, steps, summary = l_answer.strip()[:1500], l_steps or steps, l_summary.strip()[:900]
                     llm_ids = _llm_cited_ids(raw.get("citations"))
-                    model = config.STRONG_MODEL_ID if tier == "strong" else config.LIGHT_MODEL_ID
+                    model = model_name(llm, tier)
 
     if decision == DecisionCode.REQUEST_MISSING_INFO and questions:
         answer = answer.rstrip() + "\n\n" + "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))

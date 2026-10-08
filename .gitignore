@@ -9,3 +9,4 @@ data/synthetic/
 second_brain/
 .streamlit/secrets.toml
 .DS_Store
+tmp_*.py

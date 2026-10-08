@@ -97,6 +97,21 @@ class _JsonRetryMixin:
         raise ValueError(f"model did not return valid JSON after retry: {err}")
 
 
+def model_name(llm, tier: Tier) -> str:
+    """The model label to record for `llm` at `tier`: each provider names its own models (the mock says mock-*)."""
+    fn = getattr(llm, "model_name", None)
+    if callable(fn):
+        return fn(tier)
+    return config.LIGHT_MODEL_ID if tier == "light" else config.STRONG_MODEL_ID
+
+
+def pace(llm, calls: int = 2) -> None:
+    """Slow a harness down to the provider's rate limit (no-op for providers without one)."""
+    fn = getattr(llm, "pace", None)
+    if callable(fn):
+        fn(calls)
+
+
 def call_with_timeout(fn, timeout_s: float):
     """Run fn() with a wall-clock limit. Raises TimeoutError; the worker thread is abandoned (never blocks the caller)."""
     from concurrent.futures import ThreadPoolExecutor
@@ -153,6 +168,9 @@ class MockLLM(_JsonRetryMixin):
 
     def __init__(self) -> None:
         self.calls = []
+
+    def model_name(self, tier: Tier) -> str:
+        return "mock-light" if tier == "light" else "mock-strong"
 
     def complete_text(self, system: str, user: str, tier: Tier) -> str:
         self.calls.append(tier)
@@ -258,6 +276,20 @@ class RateLimiter:
         self._stamps: deque[float] = deque()
         self._lock = threading.Lock()
 
+    def wait_for(self, n: int) -> None:
+        """Wait (without consuming) until n slots are free."""
+        n = min(max(1, n), self.max_rpm)
+        while True:
+            with self._lock:
+                now = self._clock()
+                while self._stamps and now - self._stamps[0] >= 60.0:
+                    self._stamps.popleft()
+                free = self.max_rpm - len(self._stamps)
+                wait = 0.0 if free >= n else self._stamps[len(self._stamps) - (self.max_rpm - n) - 1] + 60.0 - now
+            if wait <= 0:
+                return
+            self._sleep(wait)
+
     def acquire(self, max_wait: float) -> None:
         while True:
             with self._lock:
@@ -314,19 +346,15 @@ class OpenAICompatLLM(_JsonRetryMixin):
                                {"role": "user", "content": user}]}
         if want_json and self._json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        retried_429 = False
+        retried = False                                      # ONE retry in total for transient errors (429 and 503)
         while True:
             self._limiter.acquire(max_wait=max(config.LLM_TIMEOUT_S / 2, 1.0))
             try:
                 resp = self._client.chat.completions.create(**kwargs)
                 break
             except self._openai.RateLimitError as e:
-                wait = _retry_after_seconds(e)
-                wait = DEFAULT_BACKOFF_S if wait is None else wait
-                if retried_429 or wait > RETRY_AFTER_CAP_S:
-                    raise
-                retried_429 = True
-                self._sleep(max(wait, 0.0))
+                self._backoff_or_raise(e, retried)
+                retried = True
             except (self._openai.BadRequestError, self._openai.UnprocessableEntityError) as e:
                 msg = str(e).lower()
                 if "response_format" in kwargs and ("response_format" in msg or "json" in msg):
@@ -334,7 +362,28 @@ class OpenAICompatLLM(_JsonRetryMixin):
                     kwargs.pop("response_format", None)
                     continue
                 raise
+            except self._openai.APIStatusError as e:
+                if getattr(e, "status_code", None) != 503:   # 503 / UNAVAILABLE ("model overloaded") is transient; other 5xx are not retried
+                    raise
+                self._backoff_or_raise(e, retried)
+                retried = True
         return (resp.choices[0].message.content or "") if resp.choices else ""
+
+    def _backoff_or_raise(self, err, already_retried: bool) -> None:
+        """Sleep the Retry-After (default backoff) once; give up (re-raise -> caller falls back) on a second failure or a long wait."""
+        wait = _retry_after_seconds(err)
+        wait = DEFAULT_BACKOFF_S if wait is None else wait
+        if already_retried or wait > RETRY_AFTER_CAP_S:
+            raise err
+        self._sleep(max(wait, 0.0))
+
+    def pace(self, calls: int = 2) -> None:
+        """Block (outside any call timeout) until `calls` requests fit in the rate window. Harnesses (demo, eval) call this before each
+        request so a long run is slowed down to LLM_MAX_RPM instead of falling back."""
+        self._limiter.wait_for(calls)
+
+    def model_name(self, tier: Tier) -> str:
+        return config.LIGHT_MODEL_ID if tier == "light" else config.STRONG_MODEL_ID
 
     # -- LLM protocol
     def complete_text(self, system: str, user: str, tier: Tier) -> str:

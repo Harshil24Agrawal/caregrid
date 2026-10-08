@@ -121,11 +121,22 @@ def cmd_reset() -> int:
     return 1 if result["leak_findings"] else 0
 
 
-def cmd_demo() -> int:
+def llm_for(provider: str):
+    """--provider mock (default, deterministic, offline) | env (whatever LLM_PROVIDER / .env configure)."""
+    from caregrid.llm import MockLLM, get_llm
+
+    if provider == "mock":
+        return MockLLM()
+    llm = get_llm()
+    if config.LLM_PROVIDER == "mock":
+        print("note: --provider env, but LLM_PROVIDER resolves to mock (set it in .env)")
+    return llm
+
+
+def cmd_demo(provider: str = "mock") -> int:
     """Run the acceptance scenarios headless against a throw-away in-memory store."""
     from caregrid.demo import run_demo
     from caregrid.knowledge.brain import Brain
-    from caregrid.llm import get_llm
     from caregrid.store import SQLiteStore
 
     if not (config.BRAIN_DIR / "index.md").exists():
@@ -135,10 +146,12 @@ def cmd_demo() -> int:
     import tempfile
     from pathlib import Path
 
-    print(f"LLM_PROVIDER={config.LLM_PROVIDER} EMBED_PROVIDER={config.EMBED_PROVIDER}\n")
+    llm = llm_for(provider)
+    label = "mock (forced)" if provider == "mock" else f"env -> {config.LLM_PROVIDER}"
+    print(f"LLM provider: {label} | EMBED_PROVIDER={config.EMBED_PROVIDER}\n")
     with tempfile.TemporaryDirectory() as tmp:       # S5/S6 write precedents: run on a COPY so the real second_brain/ is never touched
         shutil.copytree(config.BRAIN_DIR, Path(tmp) / "brain")
-        return run_demo(SQLiteStore(":memory:"), Brain(Path(tmp) / "brain"), get_llm(), config.DATA_DIR)
+        return run_demo(SQLiteStore(":memory:"), Brain(Path(tmp) / "brain"), llm, config.DATA_DIR)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -146,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="python -m caregrid.cli", description="CareGrid command line")
     parser.add_argument("command", choices=[*_COMMANDS, "llmcheck"])
+    parser.add_argument("--provider", choices=["mock", "env"], default="mock",
+                        help="demo/eval only: mock = deterministic offline LLM (default); env = the provider configured in .env")
     args = parser.parse_args(argv)
 
     if args.command == "llmcheck":
@@ -161,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "reset":
         return cmd_reset()
     if args.command == "demo":
-        return cmd_demo()
+        return cmd_demo(args.provider)
     print(f"'{args.command}' is not implemented yet (planned for phase {_STUBS[args.command]}).")
     return 0
 

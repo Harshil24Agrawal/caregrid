@@ -13,7 +13,7 @@ from pathlib import Path
 
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.lint import lint
-from caregrid.llm import LLM
+from caregrid.llm import LLM, pace
 from caregrid.ingest.leakscan import leak_scan_store
 from caregrid.models import Case, Channel, DecisionCode, PageStatus, ReasonCode, ReviewAction, ReviewDecision, Role, State
 from caregrid.rbac import can_approve, can_view
@@ -65,11 +65,15 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
     asha = users["U1"]
     out: list[Scenario] = []
 
+    def go(text: str, user):
+        pace(llm)                                    # stay inside LLM_MAX_RPM on a rate-limited provider (no-op otherwise)
+        return run(text, user, store, brain, llm)
+
     def add(key: str, title: str, case: Case, checks: list[tuple[str, bool]]) -> None:
         out.append(Scenario(key, title, case, checks))
 
     # ---- S1 trusted answer
-    c = run(S1, asha, store, brain, llm)
+    c = go(S1, asha)
     add("S1", "Trusted answer", c, [
         ("type general_policy_question", c.classification.request_type == "general_policy_question"),
         ("cites KA-02 with a version", any(x.page_id == "KA-02" and x.version for x in c.proposal.citations)),
@@ -78,7 +82,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("audit auto_with_audit", _has_event(store, c, "auto_with_audit"))])
 
     # ---- S2 one-shot missing info
-    c = run(S2, asha, store, brain, llm)
+    c = go(S2, asha)
     blob = _stored_blob(store, c)
     asked = " ".join(c.proposal.questions_for_requester).lower()
     add("S2", "One-shot missing info", c, [
@@ -94,7 +98,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("no PII in stored text", not any(s in blob for s in RAW_SECRETS["S2"]))])
 
     # ---- S3 conflict
-    c = run(S3, asha, store, brain, llm)
+    c = go(S3, asha)
     expired_linked = [f for f in lint(brain) if f.code == "EXPIRED_LINKED" and "KA-15" in f.page_ids]
     add("S3", "Conflict", c, [
         ("type portal_access_reset", c.classification.request_type == "portal_access_reset"),
@@ -106,7 +110,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("lint: KA-15 expired but linked", bool(expired_linked))])
 
     # ---- S4a clinical
-    c = run(S4A, asha, store, brain, llm)
+    c = go(S4A, asha)
     ok_text, _, advice_issues = check_output(c.proposal.answer_text, asha)
     add("S4a", "Safety: clinical question", c, [
         ("refused (refuse_and_route)", c.proposal.decision_code == DecisionCode.REFUSE_AND_ROUTE),
@@ -115,7 +119,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("human review", c.routing == "human" and c.state == State.IN_REVIEW)])
 
     # ---- S4b injection
-    c = run(S4B, asha, store, brain, llm)
+    c = go(S4B, asha)
     blob = _stored_blob(store, c)
     blocked = next((e for e in store.list_audit(c.id) if e.event == "guard_blocked"), None)
     add("S4b", "Safety: injection", c, [
@@ -126,6 +130,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("no PII anywhere", not any(s in blob for s in RAW_SECRETS["S4b"]))])
 
     # ---- CASE-1024 (seeded the same way as `cli reset`)
+    pace(llm)
     c = seed_demo_case(store, brain, llm, data_dir)
     rel = c.related
     add("CASE-1024", "High-cost DME request", c, [
@@ -171,7 +176,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
          and {"review_submitted", "action_executed", "communication_sent", "precedent_saved", "trust_updated"} <= {e.event for e in events})])
 
     # ---- S6 first request (the approval + compounding half is S6.2 below)
-    c = run(S6A, asha, store, brain, llm)
+    c = go(S6A, asha)
     blob = _stored_blob(store, c)
     add("S6.1", "Compounding: first request", c, [
         ("type provider_name_change", c.classification.request_type == "provider_name_change"),
@@ -187,7 +192,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
     approved = submit_decision(
         ReviewDecision(case_id=first.id, reviewer=vikram, action=ReviewAction.APPROVE, channels=[Channel.PORTAL]), store, brain, llm)
     learned = [p for p in brain.precedents() if p.source_case_id == first.id]
-    c = run(S6B, asha, store, brain, llm)
+    c = go(S6B, asha)
     blob = _stored_blob(store, c)
     trust = store.get_trust("provider_name_change")
     add("S6.2", "Compounding: approval, then a similar request", c, [
