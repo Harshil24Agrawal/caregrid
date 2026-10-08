@@ -350,7 +350,8 @@ def test_route_low_band_becomes_not_enough_evidence_with_reasons():
     with_policy = decide_route(make_case(band=Band.LOW, score=20, policy_points=15), trust(0))
     assert ReasonCode.LOW_CONFIDENCE in with_policy.reason_codes and ReasonCode.POLICY_GAP not in with_policy.reason_codes
     vague = decide_route(make_case(band=Band.LOW, score=5, policy_points=0, rtype="unknown"), trust(0))
-    assert ReasonCode.POLICY_GAP in vague.reason_codes and ReasonCode.LOW_CONFIDENCE in vague.reason_codes   # no policy covers it
+    # phase 4.2: an UNKNOWN request is an intent problem, never a policy gap (POLICY_GAP is for known types only)
+    assert ReasonCode.POLICY_GAP not in vague.reason_codes and ReasonCode.LOW_CONFIDENCE in vague.reason_codes
 
 
 def test_route_missing_or_invalid_fields_need_info():

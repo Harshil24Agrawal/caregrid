@@ -241,7 +241,11 @@ def test_abstention_is_never_auto_whatever_the_band_and_trust(brain, paths):
         case = run(text, ASHA, store, brain, LLM)
         assert case.proposal.decision_code == DecisionCode.NOT_ENOUGH_EVIDENCE, text
         assert case.routing == "human" and case.state == State.IN_REVIEW, text
-        assert {ReasonCode.POLICY_GAP, ReasonCode.LOW_CONFIDENCE} <= set(case.reason_codes), text
+        assert ReasonCode.LOW_CONFIDENCE in case.reason_codes, text
+        if case.classification.request_type == "unknown":            # phase 4.2: never a policy gap, only an unclear intent
+            assert ReasonCode.UNCLEAR_INTENT in case.reason_codes and ReasonCode.POLICY_GAP not in case.reason_codes, text
+        else:
+            assert ReasonCode.POLICY_GAP in case.reason_codes, text
         assert case.assigned_team == "TEAM-OPS-TRIAGE", text
         assert not any(c.page_type == PageType.POLICY for c in case.proposal.citations), text
         assert "enough approved guidance" in case.proposal.answer_text and not case.proposal.questions_for_requester

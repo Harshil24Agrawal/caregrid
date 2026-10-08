@@ -39,7 +39,10 @@ def decide_route(case: Case, trust: TrustRecord) -> Case:
                                                 "answer_text": not_enough_evidence_text(rules.route_team),
                                                 "questions_for_requester": []})
         _add(case, ReasonCode.LOW_CONFIDENCE)
-        if abstained or conf.breakdown.get("policy", 0) == 0:
+        known_type = bool(case.classification and case.classification.request_type != "unknown")
+        # POLICY_GAP is reserved for KNOWN request types (incl. general_policy_question) with no relevant approved policy,
+        # so Gap Radar stays meaningful. An "unknown" request is an intent problem: UNCLEAR_INTENT only (rules add it).
+        if known_type and (abstained or conf.breakdown.get("policy", 0) == 0):
             _add(case, ReasonCode.POLICY_GAP)
         set_state(case, State.IN_REVIEW)
     elif rules.missing_fields or rules.invalid_fields:

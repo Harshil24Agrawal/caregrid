@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from caregrid.ingest.names import STOP_STATIC, mask_cueless_names, stop_terms_from_titles
+from caregrid.ingest.names import CAPW, STOP_STATIC, SURNAME, mask_cueless_names, stop_terms_from_titles
 from caregrid.ingest.normalize import iso_effective_dates, normalize_text
 
 # ---- emails: anchored on '@', bounded, tolerant of spaces around dots and '@' ("jane . doe @ clinic .example")
@@ -23,19 +23,32 @@ _D = r"[A-Za-z0-9-]{1,63}"
 EMAIL = re.compile(
     r"(?<![A-Za-z0-9_%+-])" + _L + r"(?:[ \t]*\.[ \t]*" + _L + r"){0,5}[ \t]*@[ \t]*" + _D + r"(?:[ \t]*\.[ \t]*" + _D + r"){1,5}")
 # malformed IDs (M + 5..12 digits, optional '-' or space) are masked too; validity is judged by the guard on the raw text
-MEMBER_ID = re.compile(r"(?<![\w-])M[- ]?\d{5,12}(?!\w)")
+MEMBER_ID = re.compile(r"(?i)(?<![\w-])m[- ]?\d{5,12}(?!\w)")
+# more member-id shapes: MBR12345678, MEM-AB12345, "member id: 12345678"
+MEMBER_ID_VARIANTS = re.compile(
+    r"(?i)(?<![\w-])(?:(?:MBR|MEM)[- ]?(?=[A-Z0-9]*\d)[A-Z0-9]{5,14}|member\s*(?:id|no\.?|number|#)\s*[:#-]?\s*\d{5,12})(?!\w)")
+# Indian PAN (ABCDE1234F) and passport (A1234567). IFSC codes (SBIN0001234) are not personal and are left alone.
+PAN = re.compile(r"(?<![A-Za-z0-9-])[A-Z]{5}\d{4}[A-Z](?!\w)")
+PASSPORT = re.compile(r"(?<![A-Za-z0-9-])[A-Z]\d{7}(?!\w)")
+IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])")
 NPI_CONTEXT = re.compile(
     r"(?i)(\b(?:NPI|National Provider Identifier)\b[^0-9\n]{0,15}?)(?<!\d)(\d(?:[ -]?\d){4,11})(?!\d)")
-PHONE_IN = re.compile(r"(?<![\w-])(?:\+91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?!\w)")
+# "provider 1234567890" / "prov id 1234567890" also cues an NPI (NPI length only, so "provider cost 62500" is untouched)
+PROVIDER_NPI = re.compile(
+    r"(?i)(\b(?:provider|prov)\b\.?(?:\s+(?:id|no\.?|number|#))?[^0-9\n]{0,15}?)(?<!\d)(\d(?:[ -]?\d){8,9})(?!\d)")
+# +91 / 0 prefix optionally bracketed, the first 5 digits optionally bracketed, separators ' ', '-', '.' : (+91)9876543210, 98765.43210, +91 (98765) 43210
+PHONE_IN = re.compile(r"(?<![\w-])(?:\(?\+91\)?[\s.-]?|0)?\(?[6-9]\d{4}\)?[\s.-]?\d{5}(?!\w)")
 PHONE_US = re.compile(r"(?<![\w-])(?:\+1[\s.-]?)?(?:\(\d{3}\)\s?|\d{3}[\s.-])\d{3}[\s.-]\d{4}(?!\w)")
 SSN = re.compile(r"(?<![\w-])\d{3}-\d{2}-\d{4}(?!\w)")
 AADHAAR = re.compile(r"(?<![\w-])\d{4} \d{4} \d{4}(?!\w)")
 CARD = re.compile(r"(?<![\w₹-])\d(?:[ -]?\d){12,18}(?!\d)")
 DIGIT_RUN = re.compile(r"(?<![\w₹-])\d(?:[ -]?\d){8,}(?!\d)")
-DOB = re.compile(
-    r"(?i)\b(dob|d\.o\.b\.?|born(?:\s+on)?|date of birth)\b(\s*[:\-]?\s*)"
-    r"(\d{4}-\d{2}-\d{2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|[A-Za-z]+\.? \d{1,2},? \d{4}|\d{1,2} [A-Za-z]+ \d{4})"
-)
+_MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+          r"nov(?:ember)?|dec(?:ember)?)")
+# anything date-shaped after a birth label: 1980-03-03, 1980/03/03, 3/3/80, 3rd March 1980, 3 of March, 1980, March 3rd, 1980
+_DOB_DATE = (r"\d{4}[/.-]\d{1,2}[/.-]\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|"
+             r"\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?" + _MONTH + r"\.?,?\s+\d{4}|" + _MONTH + r"\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}")
+DOB = re.compile(r"(?i)\b(dob|d\.o\.b\.?|born(?:\s+on)?|date of birth|birth\s?date|birthday)\b(\s*[:\-]?\s*)(" + _DOB_DATE + ")")
 ISO_DATE = re.compile(r"(?<![\w-])\d{4}-\d{2}-\d{2}(?!\d)")
 # dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy (same separator twice; 2-digit years only with '/')
 OTHER_DATE = re.compile(r"(?<![\w/.:-])\d{1,2}([/.-])\d{1,2}\1(?:\d{4}|(?<=/)\d{2})(?![\w/.-])")
@@ -53,14 +66,16 @@ ADDRESS_PLACE = re.compile(
     r"(?<![\w])(?:[A-Z][\w'.-]{0,30}\s+){1,3}(?:Apartments?|Nagar|Colony|Layout|Residency|Towers?|Society|Enclave|Gardens?|Heights)\b"
     r"(?:\s{0,2},\s{0,2}[A-Z][^,.\n]{1,40}){0,2}(?:,?\s{0,2}\d{6}(?!\d))?")
 PIN_LABEL = re.compile(r"(?i)\b(?:pin(?:\s?code)?|zip(?:\s?code)?|postal code)\b\s{0,2}[:#-]?\s{0,2}\d{5,6}(?!\d)")
-_NAME_WORD = r"[A-Z][a-z'\u2019]+(?:-[A-Z][a-z]+)?"
-_NAME = _NAME_WORD + r"(?:\s+" + _NAME_WORD + r"){0,2}"
+# a name = first word + up to two more words/chunks; O'Brien, Rao-Iyer, de la Cruz, van der Berg are each ONE chunk
+_NAME = CAPW + r"(?:\s+" + SURNAME + r"){0,2}"
 HONORIFIC_NAME = re.compile(r"\b(Dr|Mr|Ms|Mrs|Miss|Prof)\b\.?\s+(" + _NAME + ")")
 # "changed name from Priya Nair to Priya Menon": both names are personal data even without an honorific
 NAME_PAIR = re.compile(r"(?i:\bname\b)([^.\n]{0,25}?)(?i:\bfrom\b)\s+(" + _NAME + r")\s+(?i:to)\s+(" + _NAME + ")")
 NAME_TO = re.compile(r"(?i:\bname\b)([^.\n\[]{0,25}?)(?i:\bto\b)\s+(" + _NAME + ")")
 _HONORIFIC_PREFIX = r"(?:(?:Dr|Mr|Ms|Mrs|Miss|Prof)\.?\s+)?"
 _AMOUNT_BEFORE = re.compile(r"(?i)(?:\u20b9|\brs\.?|\binr)\s{0,2}$")
+_DIGIT = re.compile(r"\d")
+_AT = re.compile("@")
 _SENTINEL = re.compile("\ue000(\\d+)\ue001")
 
 
@@ -175,14 +190,16 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
     gaz = gazetteer if gazetteer is not None else default_gazetteer()
     found: set[str] = set()
 
-    def sub(pattern: re.Pattern[str], repl, s: str, kind: str) -> str:
+    def sub(pattern: re.Pattern[str], repl, s: str, kind: str, needs: re.Pattern[str] | None = None) -> str:
+        if needs is not None and not needs.search(s):
+            return s                                   # cheap pre-check: skip passes that cannot match (keeps 50k inputs fast)
         out, n = pattern.subn(repl, s)
         if n:
             found.add(kind)
         return out
 
     s = iso_effective_dates(normalize_text(text))
-    s = sub(DOB, lambda m: f"{m.group(1)}{m.group(2)}[DATE_OF_BIRTH]", s, "DATE_OF_BIRTH")
+    s = sub(DOB, lambda m: f"{m.group(1)}{m.group(2)}[DATE_OF_BIRTH]", s, "DATE_OF_BIRTH", _DIGIT)
 
     # ISO dates (effective dates) are protected while the digit rules run, then restored
     iso: list[str] = []
@@ -191,11 +208,16 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
         iso.append(m.group(0))
         return f"\ue000{len(iso) - 1}\ue001"
 
-    s = ISO_DATE.sub(stash, s)
+    if _DIGIT.search(s):
+        s = ISO_DATE.sub(stash, s)
 
-    s = sub(EMAIL, "[EMAIL]", s, "EMAIL")
-    s = sub(MEMBER_ID, "[MEMBER_ID]", s, "MEMBER_ID")
-    s = sub(NPI_CONTEXT, lambda m: m.group(1) + "[NPI]", s, "NPI")
+    s = sub(EMAIL, "[EMAIL]", s, "EMAIL", _AT)
+    s = sub(MEMBER_ID, "[MEMBER_ID]", s, "MEMBER_ID", _DIGIT)
+    s = sub(MEMBER_ID_VARIANTS, "[MEMBER_ID]", s, "MEMBER_ID", _DIGIT)
+    s = sub(NPI_CONTEXT, lambda m: m.group(1) + "[NPI]", s, "NPI", _DIGIT)
+    s = sub(PROVIDER_NPI, lambda m: m.group(1) + "[NPI]", s, "NPI", _DIGIT)
+    s = sub(PAN, "[ID]", s, "ID", _DIGIT)
+    s = sub(PASSPORT, "[ID]", s, "ID", _DIGIT)
 
     def card(m: re.Match[str]) -> str:
         digits = re.sub(r"\D", "", m.group(0))
@@ -204,12 +226,22 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
             return "[ID]"
         return m.group(0)
 
-    s = CARD.sub(card, s)
-    s = sub(SSN, "[ID]", s, "ID")
-    s = sub(AADHAAR, "[ID]", s, "ID")
-    s = sub(PHONE_IN, "[PHONE]", s, "PHONE")
-    s = sub(PHONE_US, "[PHONE]", s, "PHONE")
-    s = sub(OTHER_DATE, "[DATE_OF_BIRTH]", s, "DATE_OF_BIRTH")
+    if _DIGIT.search(s):
+        s = CARD.sub(card, s)
+    s = sub(SSN, "[ID]", s, "ID", _DIGIT)
+    s = sub(AADHAAR, "[ID]", s, "ID", _DIGIT)
+    s = sub(PHONE_IN, "[PHONE]", s, "PHONE", _DIGIT)
+    s = sub(PHONE_US, "[PHONE]", s, "PHONE", _DIGIT)
+
+    def ip(m: re.Match[str]) -> str:
+        if all(int(o) <= 255 for o in m.group(0).split(".")):
+            found.add("ID")
+            return "[ID]"
+        return m.group(0)
+
+    if _DIGIT.search(s):
+        s = IPV4.sub(ip, s)
+    s = sub(OTHER_DATE, "[DATE_OF_BIRTH]", s, "DATE_OF_BIRTH", _DIGIT)
 
     def long_digits(m: re.Match[str]) -> str:
         if _AMOUNT_BEFORE.search(m.string[max(0, m.start() - 8):m.start()]):
@@ -220,7 +252,8 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
         found.add("ID")
         return "[ID]"
 
-    s = DIGIT_RUN.sub(long_digits, s)
+    if _DIGIT.search(s):
+        s = DIGIT_RUN.sub(long_digits, s)
 
     for lit in sorted(gaz.emails, key=len, reverse=True):
         s = sub(re.compile(re.escape(lit), re.I), "[EMAIL]", s, "EMAIL")

@@ -528,10 +528,10 @@ def _eval_rows() -> list[list]:
     for t in ["help", "I have a problem", "Can you look at this?", "urgent!!", "Something is wrong with my account"]:
         r(t, "u", reasons="UNCLEAR_INTENT")
     # off-topic or uncovered questions: no approved policy answers them -> abstain, record a policy gap, send to a human
-    r("What's on the cafeteria menu?", "u", reasons="UNCLEAR_INTENT;POLICY_GAP")
+    r("What's on the cafeteria menu?", "g", reasons="POLICY_GAP")
     r("How do I file my income tax?", "g", reasons="POLICY_GAP")
     r("What is the policy on telehealth provider credentialing?", "g", reasons="POLICY_GAP")
-    r("Can you explain our parking rules?", "u", reasons="UNCLEAR_INTENT;POLICY_GAP")
+    r("Can you explain our parking rules?", "g", reasons="POLICY_GAP")
     return [[f"EV-{i + 1:02d}", *row] for i, row in enumerate(R)]
 
 

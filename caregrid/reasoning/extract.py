@@ -22,11 +22,32 @@ TYPE_RULES: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
+_INFO_QUESTION = re.compile(
+    r"(?i)^\s*(?:what(?:'s| is| are| does| do)?|how|where|when|who|which|why|explain|can you (?:explain|tell me)|could you (?:explain|tell me)|"
+    r"is there|are there|do we have|do you have)\b")
+_QUESTION_FILLER = frozenset("what whats where when which there have does this that with from about your would could should please".split())
+
+
+def _is_info_question(text: str) -> bool:
+    """A clear question with some content ("What's on the cafeteria menu?") is a general question, so a missing policy is a
+    POLICY GAP. Vague input ("help", "Can you look at this?") is not. Clinical/sensitive wording is never a general question."""
+    if "?" not in text or not _INFO_QUESTION.search(text):
+        return False
+    content = [w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _QUESTION_FILLER]
+    if len(content) < 2:
+        return False
+    from caregrid.reasoning.guards import CLINICAL, SENSITIVE      # lazy: guards imports this module
+
+    return not (CLINICAL.search(text) or SENSITIVE.search(text))
+
+
 def keyword_type(masked_text: str) -> tuple[str, bool]:
     """-> (request_type | "unknown", hit)"""
     for rtype, rx in TYPE_RULES:
         if rx.search(masked_text):
             return rtype, True
+    if _is_info_question(masked_text):
+        return "general_policy_question", True
     return "unknown", False
 
 

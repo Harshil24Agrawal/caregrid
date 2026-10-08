@@ -18,7 +18,8 @@ from functools import lru_cache
 SUPPLEMENT = """aarav aditya akash amit ananya anil anjali arjun arun asha ashok deepak divya gaurav geeta gopal harish harsh ishaan jaya
 kavita kiran krishna lakshmi madhu mahesh manish meena meera mohan mukesh nandini naveen neeta neha nikhil nisha pooja prakash pranav
 priyanka rahul rajesh rakesh ramesh ravi rekha rohan rohit sachin sanjana sanjay santosh shweta siddharth sneha sunil sunita suresh
-sushma swati tanvi tarun uma usha varun vijay vikram vinod vivek yash""".split()
+sushma swati tanvi tarun uma usha varun vijay vikram vinod vivek yash
+jan pieter hans juan jose carlos luis pedro miguel sofia elena marco giuseppe""".split()
 
 # Business vocabulary, places and sentence words that must never be read as a name part.
 STOP_STATIC = frozenset("""provider providers enrollment operations operation triage service desk utilization management claims claim
@@ -45,7 +46,11 @@ _VERBS = ("wants|needs|called|calls|asked|asks|said|says|is|was|has|had|will|wou
 FOLLOWS = re.compile(r"(?:['’]s\b|\s+(?:" + _VERBS + r")\b)")
 PRECEDED = re.compile(r"(?i)\b(?:to|for|from|by|with|contact|call|ask|assign(?:ed)?|forward(?:ed)?|cc|attn|attention|regarding|named|"
                       r"called|email|emailed)\s+$")
-CAP_WORD = re.compile(r"(?<![\w\[\]-])[A-Z][a-z]+(?!\w)")
+# A name word: O'Brien, D'Souza, McDonald, Rao-Iyer, Anne-Marie. Surnames may carry lowercase particles: de la Cruz, van der Berg.
+NAME_PARTS = r"(?:de la|del|della|de|van der|van den|van de|van|von|der|den|bin|bint|al|el|le|la|di|da|dos|das|du)"
+CAPW = r"(?:[A-Z]['’][A-Z][a-z]+|Mc[A-Z][a-z]+|[A-Z][a-z]+)(?:[-'’][A-Z][a-z]+)*"
+SURNAME = r"(?:" + NAME_PARTS + r"\s+)*" + CAPW
+CAP_WORD = re.compile(r"(?<![\w\[\]-])" + SURNAME + r"(?!\w)")
 _GAP = re.compile(r"[ \t]{1,2}")
 
 
@@ -82,7 +87,8 @@ def mask_cueless_names(s: str, stop: set[str] | frozenset[str], token: Callable[
         m = toks[i]
         word = m.group(0)
         lw = word.lower()
-        if lw in pool and lw not in stop:
+        compound = bool(re.search(r"['’-]", lw)) and any(len(p) >= 3 and p in pool for p in re.split(r"['’-]", lw))
+        if (lw in pool or compound) and lw not in stop:
             if i + 1 < len(toks):
                 nxt = toks[i + 1]
                 if _GAP.fullmatch(s[m.end():nxt.start()]) and nxt.group(0).lower() not in stop:

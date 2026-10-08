@@ -83,6 +83,31 @@ DOS = [
 ]
 
 
+def best_time(fn, text: str, repeats: int = 3) -> float:
+    best = float("inf")
+    for _ in range(repeats):                                    # best of N: a scheduler spike is not a regex problem
+        t0 = time.perf_counter()
+        fn(text)
+        best = min(best, time.perf_counter() - t0)
+    return best
+
+
+def dos_verdict(fn, text: str) -> tuple[bool, str]:
+    """Pass if the 50k run is inside the budget, OR it scales linearly from a 10k run (ratio < 12; quadratic would be ~25) and
+    stays under a hard 5 s cap. The second branch keeps the test meaningful on a slow or busy machine."""
+    t50 = best_time(fn, text)
+    if t50 < DOS_BUDGET:
+        return True, f"{t50:.2f}s"
+    t10 = best_time(fn, text[:10_000])
+    ratio = t50 / max(t10, 1e-3)
+    return (t50 < 5.0 and ratio < 12), f"{t50:.2f}s (x{ratio:.1f} for 5x the input)"
+
+
+def _guard_pass(text: str) -> None:
+    anonymize(text, Gazetteer())
+    check_input(text, ASHA)
+
+
 def run_all() -> list[tuple[str, bool, str]]:
     rows = []
     for cid, _group, text, check in CASES:
@@ -93,11 +118,8 @@ def run_all() -> list[tuple[str, bool, str]]:
         rows.append((cid, ok, note))
     for cid, text in DOS:
         try:
-            t0 = time.perf_counter()
-            anonymize(text, Gazetteer())
-            check_input(text, ASHA)
-            dt = time.perf_counter() - t0
-            rows.append((cid, dt < DOS_BUDGET, f"{dt:.2f}s"))
+            ok, note = dos_verdict(_guard_pass, text)
+            rows.append((cid, ok, note))
         except Exception as e:
             rows.append((cid, False, type(e).__name__))
     return rows

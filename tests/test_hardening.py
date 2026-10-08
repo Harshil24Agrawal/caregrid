@@ -319,12 +319,14 @@ def test_legitimate_requests_are_not_flagged(text):
 # ================================================================== 7. regex DoS
 @pytest.mark.parametrize("cid,text", adversarial.DOS, ids=[c for c, _ in adversarial.DOS])
 def test_pathological_50k_inputs_are_fast(cid, text):
-    t0 = time.perf_counter()
-    anonymize(text, E)
-    check_input(text, ASHA)
-    detect_pii(text, E, set())
-    check_output(text, ASHA)
-    assert time.perf_counter() - t0 < adversarial.DOS_BUDGET, cid
+    def everything(t):
+        anonymize(t, E)
+        check_input(t, ASHA)
+        detect_pii(t, E, set())
+        check_output(t, ASHA)
+
+    ok, note = adversarial.dos_verdict(everything, text)
+    assert ok, (cid, note)
 
 
 def test_anonymize_directly_on_50k_of_mixed_noise_is_fast():

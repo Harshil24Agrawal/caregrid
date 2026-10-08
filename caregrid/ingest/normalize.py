@@ -29,6 +29,14 @@ _SPACED_LETTERS = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z][ .\-_]){3,}[A-Za-z](?
 _SEP = re.compile(r"[ .\-_]")
 
 
+_LEET = str.maketrans({"1": "i", "0": "o", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a"})
+
+
+def fold_leet(text: str) -> str:
+    """1gn0re -> ignore. For DETECTION copies only (injection patterns); never used for masking or output."""
+    return text.translate(_LEET)
+
+
 def normalize_text(text: str, fold: bool = True) -> str:
     out = unicodedata.normalize("NFKC", _INVISIBLE.sub("", text))
     return out.translate(_FOLD) if fold else out
