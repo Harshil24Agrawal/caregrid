@@ -22,9 +22,14 @@ _P = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 5, 7, 6, 2, 8, 3, 0, 9, 4], [5, 8, 0, 
       [9, 4, 5, 3, 1, 2, 6, 8, 7, 0], [4, 2, 8, 6, 5, 7, 3, 9, 0, 1], [2, 7, 9, 3, 8, 0, 6, 4, 1, 5], [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]]
 _INV = [0, 4, 3, 2, 1, 5, 6, 7, 8, 9]
 
-# a well-formed ID, in any of the usual typings (hyphens, spaces or none); looser shapes that start CG- are "invalid: format"
-STRICT = re.compile(r"(?i)(?<![\w-])CG[- ]?(\d{4})[- ]?(\d{4})[- ]?(\d{4})(?!\w)")
-LOOSE = re.compile(r"(?i)(?<![\w-])CG-\d[\d -]{1,18}\d(?!\w)")
+# Detection runs on normalised text (NFKC, invisible/format/NUL characters removed, look-alike letters folded). "CG" followed by 12 digits with
+# ANY separators (up to three non-word characters or underscores between digits, or none) is a Health ID typing; "CG" and 3+ digits of any other
+# length is a malformed one ("invalid: format"). Both are masked.
+_SEP = r"[\W_]{0,3}"
+ANY = re.compile(r"(?i)(?<![A-Za-z0-9])CG" + _SEP + r"((?:\d" + _SEP + r"){11}\d)(?!" + _SEP + r"\d)")
+LOOSE = re.compile(r"(?i)(?<![A-Za-z0-9])CG" + _SEP + r"\d(?:" + _SEP + r"\d){2,22}")
+STRICT = re.compile(r"(?i)(?<![\w-])CG[- ]?(\d{4})[- ]?(\d{4})[- ]?(\d{4})(?!\w)")      # the canonical typings (used by normalise / is_valid)
+BARE12 = re.compile(r"(?<![\w\u20b9-])\d(?:[ -]?\d){11}(?!\d)")                             # a bare 12-digit run: masked when it passes the checksum
 
 
 def verhoeff_valid(digits: str) -> bool:
@@ -39,6 +44,13 @@ def verhoeff_digit(payload: str) -> int:
     for i, ch in enumerate(reversed(payload)):
         c = _D[c][_P[(i + 1) % 8][int(ch)]]
     return _INV[c]
+
+
+def normalise_text(text: str) -> str:
+    """The same normalisation the masker uses (NFKC, invisible/format/NUL characters removed, look-alikes folded)."""
+    from caregrid.ingest.normalize import normalize_text
+
+    return normalize_text(text)
 
 
 def format_id(digits: str) -> str:
@@ -68,18 +80,25 @@ def masked(health_id: str) -> str:
     return f"CG-XXXX-XXXX-{n[-4:]}" if n else "CG-XXXX-XXXX-XXXX"
 
 
+def _digits(m: re.Match) -> str:
+    return re.sub(r"\D", "", m.group(1))
+
+
 def validate(raw_text: str) -> str | None:
     """'valid' | 'invalid: checksum' | 'invalid: format' | None (no Health ID in the text). Flags only; the value never leaves."""
-    results = []
-    for m in STRICT.finditer(raw_text):
-        results.append("valid" if verhoeff_valid("".join(m.groups())) else "invalid: checksum")
-    strict_spans = [m.span() for m in STRICT.finditer(raw_text)]
+    results = ["valid" if verhoeff_valid(_digits(m)) else "invalid: checksum" for m in ANY.finditer(raw_text)]
+    spans = [m.span() for m in ANY.finditer(raw_text)]
     for m in LOOSE.finditer(raw_text):
-        if not any(s <= m.start() and m.end() <= e for s, e in strict_spans):
+        if not any(s <= m.start() and m.end() <= e for s, e in spans):
             results.append("invalid: format")
     if not results:
         return None
     return next((r for r in results if r != "valid"), "valid")
+
+
+def masked_ids(raw_text: str) -> list[str]:
+    """CG-XXXX-XXXX-nnnn for every 12-digit Health ID typing, valid or not (independent of whether it exists: used to show the requester what was noted)."""
+    return list(dict.fromkeys(masked(format_id(_digits(m))) for m in ANY.finditer(raw_text)))
 
 
 # ------------------------------------------------------------------ the profiles data stands in for the vault
@@ -109,8 +128,8 @@ def member_by_key(profile_key: str, data_dir: Path) -> dict | None:
 
 def linked_profile(raw_text: str, data_dir: Path) -> str | None:
     """The profile key of the first VALID, known Health ID in the raw text (unknown but valid IDs link nothing and say nothing)."""
-    for m in STRICT.finditer(raw_text):
-        member = member_by_id(format_id("".join(m.groups())), data_dir)
+    for m in ANY.finditer(raw_text):
+        member = member_by_id(format_id(_digits(m)), data_dir)
         if member is not None:
             return member["profile_key"]
     return None

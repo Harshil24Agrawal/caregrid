@@ -106,10 +106,12 @@ ACCOUNT_WEAK = re.compile(
     rf"\b{_WEAK_VERB}\b[^.?!]{{0,70}}?\b{_SUBJ}[^.?!]{{0,70}}?\b{_ATTR}\b|"
     rf"\b{_WEAK_VERB}\b[^.?!]{{0,70}}?\b{_ATTR}\b[^.?!]{{0,70}}?\b{_SUBJ}", re.I)
 # something the request points at, after masking: a person/member/provider token, a masked id, or a claim/auth/invoice id
-_TARGET = re.compile(r"\[(?:PERSON|MEMBER|PROVIDER)_\d+\]|\[MEMBER_ID\]|\[NPI\]|\b(?:CLM|PA|INV)-\d+")
+_TARGET = re.compile(r"\[(?:PERSON|MEMBER|PROVIDER)_\d+\]|\[MEMBER_ID\]|\[HEALTH_ID\]|\[NPI\]|\b(?:CLM|PA|INV)-\d+")
+# a Health ID plus a personal attribute, or an ownership / identity question ("who owns CG-..."), is a request for that patient's record whatever the verb
+_HEALTH_ID_ASKED = re.compile(r"(?i)\b(?:phone|mobile|e-?mail|address|dob|date of birth|birth ?date|name|ssn|plan|owner|owns|owned|who|whose|identity|identify|details|contact)\b[^.?!\n]{0,40}\[HEALTH_ID\]|\[HEALTH_ID\][^.?!\n]{0,40}\b(?:phone|mobile|e-?mail|address|dob|date of birth|birth ?date|name|ssn|plan|owner|owns|owned|who|whose|identity|identify|details|contact)\b")
 
 _STATUS_ID = re.compile(r"\b(?:CLM|PA)-\d+", re.I)
-_PERSON_TOKEN = re.compile(r"\[(?:PERSON|MEMBER|PROVIDER)_\d+\]|\[MEMBER_ID\]|\[NPI\]")
+_PERSON_TOKEN = re.compile(r"\[(?:PERSON|MEMBER|PROVIDER)_\d+\]|\[MEMBER_ID\]|\[HEALTH_ID\]|\[NPI\]")
 # attributes that are personal data about a member/provider (claim "details" and "amounts" are record content, not personal data)
 _PERSONAL_ATTR = re.compile(r"\b(?:phone|e-?mail|home address|address|dob|date of birth|birth ?date|ssn|plan|name)\b", re.I)
 
@@ -217,8 +219,9 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
     masked, pii_types = anonymize(norm, gazetteer)
     # a request for someone's details only counts when there is a TARGET in the masked text;
     # generic process questions ("what is the process to change a member's email?") stay allowed
-    if (_hit(ACCOUNT_REQUEST, norm, coll) or _weak_account_request(norm, coll) or _bare_account_request(norm, coll)) \
-            and _TARGET.search(masked):
+    health_asked = "[HEALTH_ID]" in masked and bool(_HEALTH_ID_ASKED.search(masked))
+    if ((_hit(ACCOUNT_REQUEST, norm, coll) or _weak_account_request(norm, coll) or _bare_account_request(norm, coll)) and _TARGET.search(masked)) \
+            or health_asked:
         add(ReasonCode.ACCOUNT_SPECIFIC)
         notes.append("request for a specific record's personal details")
         # ACCESS_DENIED is for DISCLOSING personal data beyond the role. A status inquiry on a claim / authorization id (no person
@@ -239,6 +242,7 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
         masked += " [truncated]"
     return GuardResult(allowed=allowed, masked_text=masked, pii_types_found=pii_types, overrides=overrides,
                        injection=injection, validated_fields=validated, notes=notes,
+                       health_id_masked=health_id.masked_ids(norm),
                        patient_key=health_id.linked_profile(norm, config.DATA_DIR) if allowed else None)
 
 

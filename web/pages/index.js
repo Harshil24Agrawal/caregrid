@@ -46,7 +46,7 @@
     }
     var top = mine[0], conf = mine.filter(function (q) { return q.reason_codes.indexOf('POLICY_CONFLICT') >= 0; }).length;
     return b((RANK[top.risk] || 0) >= 3 || conf ? 'red' : 'amber', '<b>' + plural(mine.length, 'case is', 'cases are') + ' waiting for you to approve.</b> Highest risk: ' + CG.esc(top.id) + ' (' + CG.esc(top.risk) + ' risk, ' +
-      CG.esc(CG.shortWhat(top.request_type).toLowerCase()) + ')' + (conf ? '. ' + plural(conf, 'case has', 'cases have') + ' policies that disagree' : '') + '.', 'case.html?case=' + encodeURIComponent(top.id) + '&decide=1', 'Review ' + top.id);
+      CG.esc(CG.inSentence(CG.shortWhat(top.request_type))) + ')' + (conf ? '. ' + plural(conf, 'case has', 'cases have') + ' policies that disagree' : '') + '.', 'case.html?case=' + encodeURIComponent(top.id) + '&decide=1', 'Review ' + top.id);
   }
 
   function kpi(label, n, cap) { return '<div class="kpi"><div class="label">' + CG.esc(label) + '</div><div class="num">' + CG.esc(n) + '</div><div class="cap">' + CG.esc(cap) + '</div></div>'; }
@@ -67,11 +67,11 @@
 
   // ------------------------------------------------------------ my queue (max 8, no wrapping)
   var rows = queue.slice(0, 8).map(function (q) {
-    return '<tr class="click" data-id="' + CG.esc(q.id) + '"><td class="nw">' + CG.caseLink(q.id) + '</td><td class="nw" title="' + CG.esc(CG.what(q.request_type)) + '">' + CG.esc(CG.shortWhat(q.request_type)) + '</td><td class="ellip small" title="' + CG.esc(q.summary) + '">' + CG.esc(q.summary) + '</td><td class="nw">' + CG.stateTag(q.state) + '</td><td class="nw">' + CG.riskTag(q.risk, true) +
+    return '<tr class="click" data-id="' + CG.esc(q.id) + '"><td class="nw">' + CG.caseLink(q.id) + '</td><td class="ellip" title="' + CG.esc(q.summary) + '"><div class="what">' + CG.esc(CG.shortWhat(q.request_type)) + '</div><div class="subline">' + CG.esc(q.summary) + '</div></td><td class="nw">' + CG.stateTag(q.state) + '</td><td class="nw">' + CG.riskTag(q.risk, true) +
       '</td><td class="nw small" title="' + CG.esc(CG.team(q.team)) + '">' + CG.esc(CG.teamShort(q.team)) + '</td><td class="nw small">' + CG.esc(CG.age(q.age_hours)) + '</td></tr>';
   }).join('');
   var queueCard = '<div class="card"><div class="card-title"><h2>My queue</h2><a class="small" href="case.html">' + (queue.length > 8 ? 'See all ' + queue.length : 'All cases') + '</a></div>' +
-    (queue.length ? '<div class="tablewrap"><table class="compact"><thead><tr><th>Case</th><th>What</th><th>Summary</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
+    (queue.length ? '<div class="tablewrap"><table class="compact"><thead><tr><th>Case</th><th>What</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
       CG.empty('Nothing is waiting. Submit a request from New request to see it flow through.')) + '</div>';
 
   // ------------------------------------------------------------ needs attention: knowledge problems + the oldest waiting case

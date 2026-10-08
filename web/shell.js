@@ -76,6 +76,8 @@
   var SHORT = { general_policy_question: 'Policy question', provider_address_change: 'Address change', provider_name_change: 'Name change', portal_access_reset: 'Portal reset',
     prior_auth_status: 'Prior auth status', dme_equipment_request: 'DME request', claim_status_inquiry: 'Claim status', complaint_grievance: 'Complaint', unknown: 'Unclassified' };
   CG.shortWhat = function (type) { return SHORT[type] || CG.what(type); };
+  // the humanized type label inside a sentence: lower-case the first letter unless it starts an acronym ("DME request"; "Policy question" -> "policy question")
+  CG.inSentence = function (label) { return /^[A-Z]{2,}/.test(label) ? label : label.charAt(0).toLowerCase() + label.slice(1); };
   // map internal notes to plain sentences; anything unknown is shown as written
   CG.plainNote = function (n) {
     var s = String(n || '');

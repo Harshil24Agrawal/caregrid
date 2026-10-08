@@ -46,7 +46,7 @@ def main() -> None:
     c.post(f"/api/cases/{s3}/decision", headers=H("U7"), json={"action": "approve", "propose_pr": True, "note": "KA-32 is superseded by KA-31; retire it.",
                                                                 "meta_changes": {"retire": True, "target_page": "KA-32"}})
     c.post("/api/requests", headers=H("U1"), json={"text": S3})                       # a case waiting for review again
-    hid = c.get("/api/demo/samples", headers=H("U1")).json()["health_id_valid"]
+    hid = c.get("/api/demo/samples", headers=H("U4")).json()["health_id_valid"]
     c.post("/api/requests", headers=H("U1"), json={"text": f"{S1} Patient {hid}."})   # S8: linked to a patient, so the timeline has a new row
     c.post("/api/requests", headers=H("U1"), json={"text": "How do I change a provider's billing address?"})   # a how-to answered from WF-03
 

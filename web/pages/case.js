@@ -77,7 +77,7 @@
     var extra = locked ? '' : r.conflicts.map(function (x) { return '<div class="callout red"><b>Policies disagree:</b> ' + CG.esc(x) + '</div>'; }).join('') + r.notes.map(function (x) { return '<div class="callout grey">' + CG.esc(CG.plainNote(x)) + '</div>'; }).join('');
     function row(label, html) { return '<div class="row"><div class="label">' + label + '</div><div>' + html + '</div></div>'; }
     return '<div class="rows">' + row('What', '<span style="white-space:pre-wrap">' + CG.esc(c.masked_text) + '</span>' + (c.pii_types.length ? '<div style="margin-top:4px">' + c.pii_types.map(function (t) { return '<span class="chip grey">masked: ' + CG.esc(CG.piiLabel(t)) + '</span>'; }).join('') + '</div>' : '')) +
-      (c.patient ? row('Patient', '<a href="patients.html?ref=' + encodeURIComponent(c.patient.ref) + '"><span class="mono">' + CG.esc(c.patient.masked_id) + '</span> · open the patient record</a>') : '') +
+      (c.patient ? row('Patient', c.patient.ref ? '<a href="patients.html?ref=' + encodeURIComponent(c.patient.ref) + '"><span class="mono">' + CG.esc(c.patient.masked_id) + '</span> · open the patient record</a>' : '<span class="mono">' + CG.esc(c.patient.masked_id) + '</span> <span class="small muted">· Health ID noted</span>') : '') +
       row('Why a human', whySentence()) + row('Risk', risk) + row('Confidence', conf) + row('Missing', missing) +
       row('Sources', p && p.citations.length ? p.citations.map(CG.citationChip).join('') : '<span class="muted">No verified source: sent to a person.</span>') + row('Next step', CG.esc(nextStep())) + '</div>' + extra;
   }
@@ -100,7 +100,7 @@
 
   // WHY THIS DECISION: each claim with the page, version, section and file it comes from
   function sourceLine(s) {
-    return s.source_id + (s.version ? ' v' + s.version : '') + ' · ' + (s.title || '') + (s.section_heading ? ' · § ' + s.section_heading : '') + ' · ' + s.location;
+    return s.source_id + (s.version ? ' v' + s.version : '') + (s.superseded_by ? ' (superseded by v' + s.superseded_by + ')' : s.retired ? ' (retired)' : '') + ' · ' + (s.title || '') + (s.section_heading ? ' · § ' + s.section_heading : '') + ' · ' + s.location;
   }
   CG.sourceLine = sourceLine;
   function openLink(s) {

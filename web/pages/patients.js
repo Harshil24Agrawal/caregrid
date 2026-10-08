@@ -19,7 +19,7 @@
       box.value = '';                                  // the ID is not kept in the page
       msg.textContent = '';
       try {
-        var rec = await CG_API.get('/api/patients/' + encodeURIComponent(id));
+        var rec = await CG_API.post('/api/patients/lookup', { health_id: id });
         window.location.href = 'patients.html?ref=' + encodeURIComponent(rec.ref);
       } catch (e) {
         msg.className = 'small';
@@ -46,7 +46,7 @@
       el.innerHTML = '<div class="page-head"><a class="small" href="patients.html">← All patients</a><h1>Patient</h1></div><div class="card">' + CG.empty('No patient found that you can open.') + '</div>';
       return;
     }
-    var consent = Object.keys(CONSENT).map(function (k) { var on = p.consent && p.consent[k]; return '<span class="chip ' + (on ? 'green' : 'grey') + '">' + (on ? '✓ ' : '✗ ') + CONSENT[k] + '</span>'; }).join('');
+    var consent = !p.consent ? '' : Object.keys(CONSENT).map(function (k) { var on = p.consent && p.consent[k]; return '<span class="chip ' + (on ? 'green' : 'grey') + '">' + (on ? '✓ ' : '✗ ') + CONSENT[k] + '</span>'; }).join('');
     var timeline = p.access_log ? '' :
       '<div class="card" style="margin-top:16px"><div class="card-title"><h2>Timeline</h2><span class="small muted">' + p.timeline.length + ' case' + (p.timeline.length === 1 ? '' : 's') + ' you can see</span></div>' +
       (p.timeline.length ? '<div class="tablewrap"><table><thead><tr><th>Date</th><th>Case</th><th>What</th><th>State</th><th>Team</th><th>Summary</th></tr></thead><tbody>' + p.timeline.map(function (t) {
@@ -60,7 +60,7 @@
       '<label class="field">Reason (required, audited)<textarea id="rv-reason" rows="2" maxlength="300" placeholder="Why do you need the name, phone and date of birth?"></textarea></label>' +
       '<div class="flex"><button class="btn primary" id="rv-go" type="button">Reveal</button><span class="small muted">Shown once, never stored.</span></div><div id="rv-out"></div></div></div></details>' : '';
     el.innerHTML = '<div class="page-head"><a class="small" href="patients.html">← All patients</a><div class="flex" style="margin-top:6px"><h1 class="mono">' + CG.esc(p.masked_id) + '</h1>' + (p.plan ? CG.tag(p.plan + ' plan', 'blue') : '') + '</div></div>' +
-      '<div class="card"><div class="rows"><div class="row"><div class="label">Consent</div><div>' + consent + '</div></div>' +
+      '<div class="card"><div class="rows">' + (p.consent ? '<div class="row"><div class="label">Consent</div><div>' + consent + '</div></div>' : '') +
       '<div class="row"><div class="label">Personal details</div><div><div class="lock"><span aria-hidden="true">🔒</span><span>' + CG.esc(p.personal.note) + '</span></div>' + reveal + '</div></div></div></div>' + timeline + log;
     var go = document.getElementById('rv-go');
     if (go) go.onclick = async function () {

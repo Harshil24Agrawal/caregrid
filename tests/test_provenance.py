@@ -94,11 +94,32 @@ def test_assistant_reply_ends_with_a_sources_line(client):
     assert denied["restricted"] and "Sources:" not in denied["text"] and denied["sources"] == []
 
 
-def test_a_source_that_is_no_longer_current_is_not_offered(client):
+def test_a_retired_source_is_still_shown_as_the_cited_version_and_marked_retired(client):
     case = post_request(client, "asha", "What supporting documents are accepted for provider record changes?")
     cited = [c["page_id"] for c in case["proposal"]["citations"] if c["page_type"] == "policy"]
     assert cited and any(e["source_id"] in cited for e in case["provenance"])
     with api._lock:
-        api.get_brain().retire_page(cited[0])                                          # now expired: no longer the approved current version
+        api.get_brain().retire_page(cited[0])                                          # no approved version is left
     again = client.get(f"/api/cases/{case['id']}", headers=H["asha"]).json()["provenance"]
-    assert not any(e["source_id"] == cited[0] and e["source_kind"] in ("policy", "threshold") for e in again)
+    mine = [e for e in again if e["source_id"] == cited[0]]
+    assert mine and all(e["version"] == 1 and e["retired"] and e["superseded_by"] is None for e in mine)
+
+
+def test_a_superseded_version_stays_attributed_to_the_cited_version(client):
+    p0 = {e["claim"]: e for e in prov(client, "rahul", "CASE-1024")}
+    assert p0[next(c for c in p0 if c.startswith("Risk is HIGH"))]["superseded_by"] is None
+    brain = api.get_brain()
+    ka40 = brain.get("KA-40")
+    with api._lock:
+        brain.write_page(ka40.model_copy(update={"body": ka40.body + " Reviewed again."}))        # publishes v2, v1 becomes expired
+    assert brain.get("KA-40").version == 2
+    p = prov(client, "rahul", "CASE-1024")
+    ka = [e for e in p if e["source_id"] == "KA-40"]
+    assert ka and all(e["version"] == 1 and e["superseded_by"] == 2 for e in ka)
+    assert all(e["location"] == "second_brain/policy/KA-40@v1.md" for e in ka)          # never re-pointed at the v2 file
+    assert not any(e["source_id"] == "KA-40" and e["version"] == 2 for e in p)
+    from caregrid.insights.provenance import format_source
+
+    assert format_source(ka[0]).startswith("KA-40 v1 (superseded by v2) · DME equipment requests")
+    r = client.post("/api/cases/CASE-1024/assistant", headers=H["rahul"], json={"question": "Which policy applies?"}).json()
+    assert all(s["version"] == 1 and s["superseded_by"] == 2 for s in r["sources"] if s["source_id"] == "KA-40")

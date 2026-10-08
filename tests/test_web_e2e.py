@@ -359,7 +359,7 @@ def test_case_page_shows_a_summary_card_and_lists_a_summary_column(web):
     cell = p.locator("#rows tr.click td.ellip").first
     assert cell.get_attribute("title") and cell.inner_text().strip()
     web.go("/index.html", "table.compact tr.click")
-    assert "SUMMARY" in text(p, "table.compact thead").upper()
+    assert "SUMMARY" not in text(p, "table.compact thead").upper() and p.locator("table.compact .subline").count() >= 1
     assert "EVALUATION" not in text(p).upper() and "GAP RADAR" not in text(p).upper()
 
 
@@ -404,7 +404,7 @@ def test_assistant_reply_shows_a_sources_line(web):
 
 
 def test_s8_health_id_links_the_case_and_a_wrong_id_is_sent_back(web):
-    web.as_user("U1")
+    web.as_user("U4")  # sample IDs are offered to ops managers and senior reviewers in demo mode
     p = web.go("/intake.html", "#examples button")
     p.click("#examples button:has-text('S8 · Health ID')")
     p.click("#submit")
@@ -416,6 +416,9 @@ def test_s8_health_id_links_the_case_and_a_wrong_id_is_sent_back(web):
     p.wait_for_selector("table", timeout=T)
     assert "CG-XXXX-XXXX-" in text(p, "h1") and cid in text(p, "#content")
     assert "Name, phone and date of birth are never shown" in text(p, "#content")
+    web.as_user("U1")                                                                   # an ops employee gets no sample chips
+    assert web.go("/intake.html", "#examples button").locator("#examples button:has-text('S8')").count() == 0
+    web.as_user("U4")
     # the wrong-checksum example: asked to re-check, not linked
     p = web.go("/intake.html", "#examples button")
     p.click("#examples button:has-text('S8 · Wrong ID')")
@@ -447,3 +450,28 @@ def test_s8_health_id_links_the_case_and_a_wrong_id_is_sent_back(web):
     p.press("#hid", "Enter")
     p.wait_for_function("document.getElementById('lookup-msg').textContent.length > 0", timeout=T)
     assert p.input_value("#hid") == "" and "checksum" in text(p, "#lookup-msg")
+
+
+def test_queue_table_fits_inside_its_card_at_1440_and_1920(web):
+    web.as_user("U4")
+    p = web.go("/index.html", "table.compact tr.click")
+    for width in (1440, 1920):
+        p.set_viewport_size({"width": width, "height": 900})
+        p.wait_for_timeout(200)
+        box = p.evaluate("""() => { const w = document.querySelector('table.compact').closest('.tablewrap'); const card = w.closest('.card');
+            const r = card.getBoundingClientRect(); const last = document.querySelector('table.compact th:last-child').getBoundingClientRect();
+            return {overflow: w.scrollWidth - w.clientWidth, lastRight: last.right, cardRight: r.right, heads: [...document.querySelectorAll('table.compact th')].map(h => h.textContent.trim())}; }""")
+        assert box["overflow"] <= 0 and box["lastRight"] <= box["cardRight"] + 0.5, (width, box)
+        assert box["heads"] == ["Case", "What", "State", "Risk", "Team", "Age"], box["heads"]
+    sub = p.locator("table.compact td.ellip .subline").first
+    assert sub.inner_text().strip() and p.locator("table.compact td.ellip").first.get_attribute("title")
+    p.set_viewport_size({"width": 1280, "height": 720})
+    web.go("/case.html", "#rows tr.click")
+    assert "SUMMARY" in text(web.page, "thead").upper()                                  # the Cases page keeps its Summary column
+
+
+def test_banner_uses_the_humanized_type_label(web):
+    web.as_user("U4")
+    p = web.go("/index.html", ".banner")
+    banner = text(p, ".banner")
+    assert not re.search(r"(?:dme|dme request|policy_question|[a-z]+_[a-z]+)", banner) and "dme request" not in banner

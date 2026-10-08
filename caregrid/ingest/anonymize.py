@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from caregrid import health_id
 from caregrid.ingest.names import CAPW, STOP_STATIC, SURNAME, mask_cueless_names, stop_terms_from_titles
 from caregrid.ingest.normalize import iso_effective_dates, normalize_text
 
@@ -25,7 +26,8 @@ EMAIL = re.compile(
 # malformed IDs (M + 5..12 digits, optional '-' or space) are masked too; validity is judged by the guard on the raw text
 MEMBER_ID = re.compile(r"(?i)(?<![\w-])m[- ]?\d{5,12}(?!\w)")
 # CareGrid Health ID in any typing (CG-1234-5678-9012, CG 1234 5678 9012, CG123456789012) and any malformed CG- number; the guard judges validity on the raw text
-HEALTH_ID = re.compile(r"(?i)(?<![\w-])CG(?:[- ]?\d{4}){3}(?!\w)|(?<![\w-])CG-\d[\d -]{1,18}\d(?!\w)")
+HEALTH_ID = health_id.ANY
+HEALTH_ID_LOOSE = health_id.LOOSE
 # more member-id shapes: MBR12345678, MEM-AB12345, "member id: 12345678"
 MEMBER_ID_VARIANTS = re.compile(
     r"(?i)(?<![\w-])(?:(?:MBR|MEM)[- ]?(?=[A-Z0-9]*\d)[A-Z0-9]{5,14}|member\s*(?:id|no\.?|number|#)\s*[:#-]?\s*\d{5,12})(?!\w)")
@@ -215,6 +217,16 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
 
     s = sub(EMAIL, "[EMAIL]", s, "EMAIL", _AT)
     s = sub(HEALTH_ID, "[HEALTH_ID]", s, "HEALTH_ID", _DIGIT)
+    s = sub(HEALTH_ID_LOOSE, "[HEALTH_ID]", s, "HEALTH_ID", _DIGIT)
+
+    def bare_health_id(m: re.Match[str]) -> str:
+        if health_id.verhoeff_valid(re.sub(r"\D", "", m.group(0))):
+            found.add("HEALTH_ID")
+            return "[HEALTH_ID]"
+        return m.group(0)
+
+    if _DIGIT.search(s):
+        s = health_id.BARE12.sub(bare_health_id, s)
     s = sub(MEMBER_ID, "[MEMBER_ID]", s, "MEMBER_ID", _DIGIT)
     s = sub(MEMBER_ID_VARIANTS, "[MEMBER_ID]", s, "MEMBER_ID", _DIGIT)
     s = sub(NPI_CONTEXT, lambda m: m.group(1) + "[NPI]", s, "NPI", _DIGIT)

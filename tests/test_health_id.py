@@ -101,20 +101,20 @@ def stored_blob():
 def test_s8_valid_id_links_the_case_and_nothing_stores_the_id(client):
     hid = members()[0]["health_id"]
     case = post_request(client, "asha", f"What supporting documents are accepted for provider record changes? Patient {hid}.")
-    assert case["patient"] == {"ref": "PRF-2001", "masked_id": health_id.masked(hid)} and "[HEALTH_ID]" in case["masked_text"]
+    assert case["patient"] == {"ref": None, "masked_id": health_id.masked(hid)} and "[HEALTH_ID]" in case["masked_text"]      # Asha: what she typed, masked
     assert "HEALTH_ID" in case["pii_types"] and hid not in str(case)
     blob = stored_blob()
     assert hid not in blob and hid.replace("-", "") not in blob
     rahul = client.get("/api/patients/PRF-2001", headers=H["rahul"]).json()
     assert case["id"] in {t["case_id"] for t in rahul["timeline"]}
-    assert case["id"] in {t["case_id"] for t in client.get(f"/api/patients/{hid}", headers=H["asha"]).json()["timeline"]}
+    assert case["id"] in {t["case_id"] for t in client.post("/api/patients/lookup", headers=H["asha"], json={"health_id": hid}).json()["timeline"]}
 
 
 def test_s8_wrong_checksum_asks_to_recheck_and_is_not_linked(client):
     hid = members()[0]["health_id"]
     bad = with_wrong_digit(hid)
     case = post_request(client, "asha", f"What supporting documents are accepted for provider record changes? Patient {bad}.")
-    assert case["state"] == "needs_info" and case["missing"]["invalid"] == ["health_id"] and case["patient"] is None
+    assert case["state"] == "needs_info" and case["missing"]["invalid"] == ["health_id"] and case["patient"]["ref"] is None
     q = " ".join(case["proposal"]["questions_for_requester"])
     assert "Health ID" in q and "check digit" in q and bad not in q
     assert case["id"] not in {t["case_id"] for t in client.get("/api/patients/PRF-2001", headers=H["rahul"]).json()["timeline"]}
@@ -125,12 +125,12 @@ def test_s8_wrong_checksum_asks_to_recheck_and_is_not_linked(client):
 
 def test_checksum_422_and_one_404_for_unknown_and_unauthorized(client):
     hid = members()[0]["health_id"]
-    assert client.get(f"/api/patients/{with_wrong_digit(hid)}", headers=H["rahul"]).status_code == 422
+    assert client.post("/api/patients/lookup", headers=H["rahul"], json={"health_id": with_wrong_digit(hid)}).status_code == 422
     unknown_valid = health_id.format_id("99999999999" + str(health_id.verhoeff_digit("99999999999")))
-    a = client.get(f"/api/patients/{unknown_valid}", headers=H["rahul"])
-    b = client.get(f"/api/patients/{hid}", headers=H["kiran"])             # exists, but Kiran has no case on this patient
+    a = client.post("/api/patients/lookup", headers=H["rahul"], json={"health_id": unknown_valid})
+    b = client.post("/api/patients/lookup", headers=H["kiran"], json={"health_id": hid})             # exists, but Kiran has no case on this patient
     c = client.get("/api/patients/PRF-2999", headers=H["rahul"])
-    d = client.get(f"/api/patients/{hid}", headers=H["meera"])             # knowledge owner: never
+    d = client.post("/api/patients/lookup", headers=H["meera"], json={"health_id": hid})             # knowledge owner: never
     assert {a.status_code, b.status_code, c.status_code, d.status_code} == {404} and a.json() == b.json() == c.json() == d.json()
 
 
@@ -155,7 +155,7 @@ def test_auditor_sees_the_access_log_and_no_timeline(client):
 def test_reveal_needs_a_senior_reviewer_a_linked_case_and_a_reason(client):
     m = members()[0]
     path = "/api/patients/PRF-2001/reveal"
-    body = {"case_id": "CASE-1024", "reason": "Verify identity before approving the equipment request."}
+    body = {"case_id": "CASE-1024", "reason": "Verify identity before approving the equipment request now."}
     assert client.post(path, headers=H["neha"], json=body).status_code == 403
     assert client.post(path, headers=H["asha"], json=body).status_code == 403
     assert client.post(path, headers=H["rahul"], json={**body, "reason": "short"}).status_code == 422
@@ -191,15 +191,18 @@ def test_comms_never_carry_the_health_id(client):
 
 def test_case_detail_links_to_the_patient_only_for_viewers_who_may_open_it(client):
     assert client.get("/api/cases/CASE-1024", headers=H["rahul"]).json()["patient"]["ref"] == "PRF-2001"
-    assert client.get("/api/cases/CASE-1024", headers=H["asha"]).json()["patient"]["ref"] == "PRF-2001"
+    assert client.get("/api/cases/CASE-1024", headers=H["asha"]).json()["patient"] is None          # nothing was typed in that seeded case
     assert client.get("/api/cases/CASE-1024", headers=H["meera"]).json()["patient"] is None
 
 
 def test_demo_samples_are_a_valid_and_a_wrong_id_in_demo_mode_only(client, monkeypatch):
-    r = client.get("/api/demo/samples", headers=H["asha"]).json()
-    assert health_id.is_valid(r["health_id_valid"]) and not health_id.is_valid(r["health_id_wrong_checksum"])
+    for who in ("rahul", "neha"):
+        r = client.get("/api/demo/samples", headers=H[who]).json()
+        assert health_id.is_valid(r["health_id_valid"]) and not health_id.is_valid(r["health_id_wrong_checksum"])
+    for who in ("asha", "vikram", "meera", "arjun", "kiran"):
+        assert client.get("/api/demo/samples", headers=H[who]).status_code == 404, who
     monkeypatch.setenv("DEMO_MODE", "0")
-    assert client.get("/api/demo/samples", headers=H["asha"]).status_code == 404
+    assert client.get("/api/demo/samples", headers=H["rahul"]).status_code == 404
 
 
 # ------------------------------------------------------------------ the role rules, without the HTTP layer

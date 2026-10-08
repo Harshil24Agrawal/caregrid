@@ -617,8 +617,9 @@ def api_pr_decision(pr_id: str, body: PRDecisionIn, user: User = Depends(actor))
 
 @app.get("/api/demo/samples")
 def api_demo_samples(user: User = Depends(actor)):
-    """Demo mode only: a synthetic Health ID (and the same ID with a wrong last digit) so scenario S8 can be clicked. 404 outside demo mode."""
-    if not demo_mode():
+    """Demo mode AND an ops manager / senior reviewer only (anyone else gets the same 404): a synthetic Health ID, and the same ID with a wrong
+    last digit, so scenario S8 can be clicked."""
+    if not demo_mode() or user.role not in RESET_ROLES:
         raise HTTPException(status_code=404, detail="Not available.")
     from caregrid import health_id
 
@@ -637,14 +638,30 @@ def api_patients(user: User = Depends(actor)):
     return scrub(patients_mod.patients_for(user, get_store(), config.DATA_DIR), user)
 
 
-@app.get("/api/patients/{ref}")
-def api_patient(ref: str, user: User = Depends(actor)):
-    """ref = a Health ID (CG-XXXX-XXXX-XXXX) or the profile key a case links to. A wrong checksum is 422; an unknown id and an id the caller may
-    not open give the SAME 404, so the endpoint is no existence oracle. Every successful view is audited (record_viewed)."""
+class LookupIn(BaseModel):
+    health_id: str = Field(min_length=1, max_length=64)
+
+
+@app.post("/api/patients/lookup")
+def api_patient_lookup(body: LookupIn, user: User = Depends(actor)):
+    """Open a record by a typed Health ID. The ID is in the body, never in a URL or a log line. A wrong checksum is 422; an unknown id and an id
+    the caller may not open give the SAME 404. Refusals are audited as record_lookup_denied (role and reason, never the ID)."""
     try:
-        rec = patients_mod.record(ref, user, get_store(), config.DATA_DIR)
+        rec = patients_mod.lookup(body.health_id, user, get_store(), config.DATA_DIR)
     except patients_mod.BadHealthId as e:
         raise HTTPException(status_code=422, detail="The Health ID does not pass its checksum. Please re-check the digits.") from e
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Unknown patient.")
+    return scrub(rec, user)
+
+
+@app.get("/api/patients/{ref}")
+def api_patient(ref: str, user: User = Depends(actor)):
+    """ref = the profile key a case or the patient list gives you (PRF-...). A Health ID is not accepted in the URL: use POST /api/patients/lookup.
+    Unknown and not-allowed give the same 404. Every successful view is audited (record_viewed)."""
+    if ref.upper().startswith("CG"):
+        raise HTTPException(status_code=404, detail="Unknown patient.")
+    rec = patients_mod.record(ref, user, get_store(), config.DATA_DIR)
     if rec is None:
         raise HTTPException(status_code=404, detail="Unknown patient.")
     return scrub(rec, user)
@@ -657,13 +674,16 @@ class RevealIn(BaseModel):
 
 @app.post("/api/patients/{ref}/reveal")
 def api_patient_reveal(ref: str, body: RevealIn, user: User = Depends(actor)):
-    """Name, phone and date of birth for ONE linked case: senior reviewers only, reason mandatory, audited as record_revealed, never stored."""
+    """Name, phone and date of birth for ONE linked case: senior reviewers only, a real reason (3+ words), at most 5 per hour (429), audited as
+    record_revealed, never stored. `ref` is a profile key."""
+    if ref.upper().startswith("CG"):
+        raise HTTPException(status_code=404, detail="Unknown patient.")
     try:
         return patients_mod.reveal(ref, user, body.case_id, body.reason, get_store(), config.DATA_DIR)      # deliberately not scrubbed: that is the point
     except KeyError as e:
         raise HTTPException(status_code=404, detail="Unknown patient.") from e
-    except patients_mod.BadHealthId as e:
-        raise HTTPException(status_code=422, detail="The Health ID does not pass its checksum.") from e
+    except patients_mod.RateLimited as e:
+        raise HTTPException(status_code=429, detail="Too many reveals this hour (limit 5). Try again later.") from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 

@@ -127,3 +127,6 @@ table.compact { font-size: 13px; } table.compact th, table.compact td { padding:
 .prov .srcs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; } .chip.src { border-radius: 8px; font-size: 12px; color: var(--muted); white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
 .chip.src.threshold, .chip.src.policy { border-color: #b8d0f7; background: var(--blue-bg); color: var(--blue-d); } .chip.src.guard { background: var(--amber-bg); border-color: #f0d9a4; color: var(--amber); }
 .sources { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); } .srcline { overflow-wrap: anywhere; } .sec { padding: 6px 8px; border-left: 3px solid var(--line); margin: 6px 0; } .sec.hl { background: var(--amber-bg); border-left-color: var(--amber); }
+
+td.ellip > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } td.ellip .subline { font-size: 12px; color: var(--muted); margin-top: 1px; } td.ellip .what { font-weight: 600; }
+table.compact td.ellip { min-width: 120px; }

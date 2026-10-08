@@ -53,7 +53,7 @@
     else body = '<div style="margin:4px 0">' + CG.reasonChips(c.reason_codes) + '</div>' + (c.approver_role ? '<p class="small muted">Needs a ' + CG.esc(CG.role(c.approver_role).toLowerCase()) + ' to decide.</p>' : '');
     var pii = c.pii_types.length ? '<div class="row"><div class="label">Masked</div><div>' + c.pii_types.map(function (t) { return '<span class="chip grey">' + CG.esc(CG.piiLabel(t)) + '</span>'; }).join('') + '</div></div>' :
       '<div class="row"><div class="label">Masked</div><div class="muted">No personal data found.</div></div>';
-    var patient = c.patient ? '<div class="row"><div class="label">Patient</div><div><a href="patients.html?ref=' + encodeURIComponent(c.patient.ref) + '"><span class="mono">' + CG.esc(c.patient.masked_id) + '</span> · linked, open the record</a></div></div>' : '';
+    var patient = c.patient ? '<div class="row"><div class="label">Patient</div><div>' + (c.patient.ref ? '<a href="patients.html?ref=' + encodeURIComponent(c.patient.ref) + '"><span class="mono">' + CG.esc(c.patient.masked_id) + '</span> · linked, open the record</a>' : '<span class="mono">' + CG.esc(c.patient.masked_id) + '</span> <span class="small muted">· Health ID noted</span>') + '</div></div>' : '';
     var src = (p.citations || []).length ? '<div class="row"><div class="label">Sources</div><div>' + p.citations.map(CG.citationChip).join('') + '</div></div>' : '';
     return '<div class="headline ' + h[0] + '">' + CG.esc(h[1]) + '</div>' + body + '<div class="rows" style="margin-top:12px">' + pii +
       '<div class="row"><div class="label">Confidence</div><div>' + (CG.band(c.confidence) || '<span class="muted">not scored</span>') + '</div></div>' + src + patient + '</div>' +

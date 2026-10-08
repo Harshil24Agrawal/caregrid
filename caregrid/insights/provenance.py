@@ -78,11 +78,30 @@ def _page_source(kind: str, page: Page, slug: str) -> dict:
 
 
 def _verified(brain: Brain, page: Page | None) -> Page | None:
-    """The page only if it is the approved current version."""
-    if page is None:
-        return None
-    current = brain.get(page.id)
-    return page if current is not None and current.version == page.version and page.status == PageStatus.APPROVED else None
+    """The page if it exists and is not a draft. A page the case CITED may have been superseded since: it is still the source (marked as
+    superseded), never replaced by the current version or another page."""
+    return page if page is not None and page.status != PageStatus.DRAFT else None
+
+
+def resolve(brain: Brain, case: Case | None, page_id: str) -> Page | None:
+    """The page at the version the case cited (any status), else the current approved page."""
+    version = None
+    if case is not None:
+        version = next((c.version for c in (case.proposal.citations if case.proposal else []) if c.page_id == page_id and c.version), None) \
+            or next((c.version for c in case.citations_considered if c.page_id == page_id and c.version), None)
+    return brain.get(page_id, version) if version else brain.get(page_id)
+
+
+def _supersession(brain: Brain, src: dict) -> dict:
+    """superseded_by = the current version number when the cited version is no longer current; retired = no approved version is left."""
+    out = {"superseded_by": None, "retired": False}
+    if src.get("version") and src.get("source_kind") != "routing_rule" and src.get("source_id"):
+        current = brain.get(src["source_id"])
+        if current is None:
+            out["retired"] = True
+        elif current.version != src["version"]:
+            out["superseded_by"] = current.version
+    return out
 
 
 def _routing_row(brain: Brain, rr_id: str) -> dict | None:
@@ -119,16 +138,25 @@ def format_source(src: dict) -> str:
     if src.get("restricted") or not src.get("source_id"):
         return "restricted"
     ident = src["source_id"] + (f" v{src['version']}" if src.get("version") else "")
+    if src.get("superseded_by"):
+        ident += f" (superseded by v{src['superseded_by']})"
+    elif src.get("retired"):
+        ident += " (retired)"
     parts = [ident, src.get("title") or "", f"§ {src['section_heading']}" if src.get("section_heading") else "", src.get("location") or ""]
     return " · ".join(p for p in parts if p)
 
 
 def source_for_citation(brain: Brain, page_id: str, case: Case | None = None) -> dict | None:
+    src = _source_for_citation(brain, page_id, case)
+    return None if src is None else {**src, **_supersession(brain, src)}
+
+
+def _source_for_citation(brain: Brain, page_id: str, case: Case | None = None) -> dict | None:
     """The source entry for a page the assistant cited (policy -> threshold section when the case's risk comes from it)."""
     prec = _precedent_source(brain, page_id) if brain.get_precedent(page_id) else None
     if prec is not None:
         return prec
-    page = _verified(brain, brain.get(page_id))
+    page = _verified(brain, resolve(brain, case, page_id))
     if page is None:
         return None
     if page.type == PageType.WORKFLOW:
@@ -142,11 +170,11 @@ def source_for_citation(brain: Brain, page_id: str, case: Case | None = None) ->
     return _page_source("policy", page, page_sections(page)[0]["slug"])
 
 
-def first_policy_for_threshold(brain: Brain, wf: Page | None, cited) -> Page | None:
+def first_policy_for_threshold(brain: Brain, case: Case, wf: Page | None, cited) -> Page | None:
     """The policy that carries a cost threshold: the workflow's first linked policy (the one named in the risk reason), else the first cited one."""
     ids = list(wf.meta.get("policy_ids", [])) if wf else []
     ids += [c.page_id for c in cited]
-    return next((p for pid in ids if (p := _verified(brain, brain.get(pid))) is not None and p.type == PageType.POLICY), None)
+    return next((p for pid in ids if (p := _verified(brain, resolve(brain, case, pid))) is not None and p.type == PageType.POLICY), None)
 
 
 # ------------------------------------------------------------------ the provenance of a case
@@ -161,22 +189,24 @@ def provenance(case: Case, brain: Brain, viewer: User, clean: Callable[[str], st
 
     def add(claim: str, src: dict | None, *, kind: str | None = None, restricted: bool = False) -> None:
         entry = {"claim": clean(claim), "source_kind": None, "source_id": None, "version": None, "section": None, "section_heading": None,
-                 "title": None, "location": None, "restricted": restricted}
+                 "title": None, "location": None, "restricted": restricted, "superseded_by": None, "retired": False}
         if src is not None and not restricted:
             entry.update(src)
+            entry.update(_supersession(brain, entry))
             entry["title"] = clean(entry["title"] or "")
             entry["section_heading"] = clean(entry["section_heading"] or "") or None
         elif kind:
             entry["source_kind"] = kind
         out.append(entry)
 
-    cited_wf = next((brain.get(c.page_id) for c in (prop.citations if prop else []) if c.page_type == PageType.WORKFLOW), None)
+    cited_wf = next((resolve(brain, case, c.page_id) for c in (prop.citations if prop else []) if c.page_type == PageType.WORKFLOW), None)
     howto = bool(rtype == "general_policy_question" and cited_wf is not None and "general_policy_question" not in cited_wf.request_types)
-    wf = _verified(brain, cited_wf if howto else brain.workflow_for(rtype) if rtype not in ("unknown",) else None)
-    if wf is None and rtype == "general_policy_question":
-        wf = _verified(brain, brain.workflow_for(rtype))
+    if cited_wf is not None and (howto or rtype in cited_wf.request_types):
+        wf = _verified(brain, cited_wf)                            # the workflow version the case cited
+    else:
+        wf = _verified(brain, brain.workflow_for(rtype)) if rtype != "unknown" else None
     policies = [c for c in (prop.citations if prop else []) if c.page_type == PageType.POLICY]
-    first_policy = _verified(brain, brain.get(policies[0].page_id)) if policies else None
+    first_policy = _verified(brain, resolve(brain, case, policies[0].page_id)) if policies else None
 
     # 1 request type
     label_txt = TYPE_LABEL.get(rtype, rtype).removeprefix("a ").removeprefix("an ")
@@ -210,8 +240,8 @@ def provenance(case: Case, brain: Brain, viewer: User, clean: Callable[[str], st
         risk_src, risk_claim = None, "Risk was not assessed"
     elif "CLINICAL" in reasons or blocked or any("legal wording" in r for r in rules.risk_reasons):
         risk_src, risk_claim = _guard_source("Clinical, sensitive and injection checks"), f"Risk is {rules.risk.value.upper()}"
-    elif threshold_reason and first_policy_for_threshold(brain, wf, policies) is not None:
-        pol = first_policy_for_threshold(brain, wf, policies)
+    elif threshold_reason and first_policy_for_threshold(brain, case, wf, policies) is not None:
+        pol = first_policy_for_threshold(brain, case, wf, policies)
         risk_src = _page_source("threshold", pol, "threshold" if any(s["slug"] == "threshold" for s in page_sections(pol)) else "policy-text")
         risk_claim = f"Risk is {rules.risk.value.upper()}" + (f": {threshold_reason}" if full else "")
     elif wf is not None:
@@ -263,7 +293,7 @@ def provenance(case: Case, brain: Brain, viewer: User, clean: Callable[[str], st
                 ids = list(dict.fromkeys(re.findall(r"\b(?:KA|REG)-\d+\b", " ".join(rules.conflicts)))) if rules and rules.conflicts else []
                 if ids:
                     for pid in ids:
-                        page = _verified(brain, brain.get(pid))
+                        page = _verified(brain, resolve(brain, case, pid))
                         if page:
                             add(f"{names[key]}: {value}/{MAX[key]} (conflict)", _page_source("policy", page, "rule" if page.meta.get("rule_key") else "policy-text"))
                     continue
@@ -282,7 +312,7 @@ def provenance(case: Case, brain: Brain, viewer: User, clean: Callable[[str], st
             m = re.search(r"\b((?:KA|WF|REG)-\d+)\b", step)
             if step in wf_steps and wf is not None:
                 add(f"Next step: {step}", _page_source("workflow", wf, "steps"))
-            elif m and _verified(brain, brain.get(m.group(1))):
+            elif m and _verified(brain, resolve(brain, case, m.group(1))):
                 add(f"Next step: {step}", source_for_citation(brain, m.group(1), case))
             else:
                 add(f"Next step: {step}", _routing_source(brain, rr or ""), kind="routing_rule")

@@ -21,6 +21,8 @@ _LOOKALIKES = {
     "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K", "Μ": "M",
     "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X", "ο": "o", "ν": "v",
     "ι": "i", "ρ": "p", "α": "a", "κ": "k", "υ": "u",
+    # letters that look like G (Cyrillic Ge, Greek Gamma, Komi Ge, Latin script g)
+    "Г": "G", "Γ": "G", "Ԍ": "G", "г": "g", "γ": "g", "ɡ": "g",
 }
 _FOLD = str.maketrans(_LOOKALIKES)
 
@@ -37,8 +39,15 @@ def fold_leet(text: str) -> str:
     return text.translate(_LEET)
 
 
+def _strip_controls(text: str) -> str:
+    """Drop control (Cc, except tab / newline / carriage return) and format (Cf) characters: NUL, zero-width, bidi, soft hyphen, word joiner ..."""
+    if text.isascii() and text.isprintable():
+        return text
+    return "".join(ch for ch in text if ch in "\t\n\r" or unicodedata.category(ch) not in ("Cc", "Cf"))
+
+
 def normalize_text(text: str, fold: bool = True) -> str:
-    out = unicodedata.normalize("NFKC", _INVISIBLE.sub("", text))
+    out = unicodedata.normalize("NFKC", _strip_controls(_INVISIBLE.sub("", text)))
     return out.translate(_FOLD) if fold else out
 
 
