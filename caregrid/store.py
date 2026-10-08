@@ -41,6 +41,11 @@ CREATE INDEX IF NOT EXISTS audit_case ON audit(case_id);
 CREATE INDEX IF NOT EXISTS comms_case ON comms(case_id);
 """
 
+def new_audit_id() -> str:
+    """Prefixed so an id such as 410102805984 can never be mistaken for a phone/ID number by the PII detectors."""
+    return "AUD-" + uuid.uuid4().hex[:12]
+
+
 _REQ_ID = re.compile(r"^REQ-(\d+)$")
 
 
@@ -96,7 +101,7 @@ class SQLiteStore:
         )
         if types:
             self.append_audit(AuditEvent(
-                id=uuid.uuid4().hex[:12], ts=datetime.now(), case_id=case.id, actor_id="system", actor_role="system",
+                id=new_audit_id(), ts=datetime.now(), case_id=case.id, actor_id="system", actor_role="system",
                 event="pii_remasked", details={"pii_remasked": sorted(types), "source": "save_case"}))
 
     def get_case(self, case_id: str) -> Case | None:

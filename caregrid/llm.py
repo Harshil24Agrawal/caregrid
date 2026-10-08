@@ -94,6 +94,56 @@ class _JsonRetryMixin:
         raise ValueError(f"model did not return valid JSON after retry: {err}")
 
 
+def call_with_timeout(fn, timeout_s: float):
+    """Run fn() with a wall-clock limit. Raises TimeoutError; the worker thread is abandoned (never blocks the caller)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
+        return ex.submit(fn).result(timeout=timeout_s)
+    finally:
+        ex.shutdown(wait=False)
+
+
+_CTX_HEADER = re.compile(r"^\[([A-Za-z0-9-]+)(?: v(\d+))? \| (\w+) \| (.*)\]$", re.M)
+_RULES_LINE = re.compile(r"decision_code=(\w+); route_team=([\w-]+|None);")
+
+
+def mock_propose(user: str) -> dict:
+    """PROMPTS §6: template strings filled from the RULES block and the first lines of the context pages.
+    Only text that is present in the prompt is used, so the number guard always accepts it."""
+    m = _RULES_LINE.search(user)
+    decision, team = (m.group(1), m.group(2)) if m else ("route_to_team", "None")
+    body = user.rsplit("CONTEXT PAGES:", 1)[-1]
+    heads = list(_CTX_HEADER.finditer(body))
+    blocks = []
+    for i, h in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(body)
+        blocks.append((h.group(1), h.group(3), h.group(4), body[h.end():end].strip()))
+    policies = [b for b in blocks if b[1] == "policy"]
+    first_sentence = (policies[0][3].split(". ")[0].strip().rstrip(".") + ".") if policies and policies[0][3] else ""
+    where = team if team != "None" else "the right team"
+    if decision == "answer_from_policy" and first_sentence:
+        answer = f"1. {first_sentence}\n2. See {policies[0][0]} for the full guidance."
+    elif decision == "request_missing_info":
+        answer = "1. Thank you. A few details are still needed before this can move forward.\n2. Please send them all in one reply."
+    elif decision == "escalate_senior":
+        answer = f"1. This request needs senior review and has been prepared for {where}."
+    elif decision == "not_enough_evidence":
+        answer = f"1. There is not enough approved guidance to answer this yet.\n2. It has been passed to {where}."
+    else:
+        answer = f"1. Your request has been prepared for {where}.\n2. A specialist will review it."
+    cites = ([b[0] for b in blocks if b[1] == "policy"][:1] + [b[0] for b in blocks if b[1] == "workflow"]
+             + [b[0] for b in blocks if b[1] == "precedent"][:1])
+    return {
+        "answer_text": answer,
+        "next_steps": ["A specialist will review the request."],
+        "questions_for_requester": [],
+        "summary_for_reviewer": f"Prepared for {where} with decision {decision}.",
+        "citations": cites,
+    }
+
+
 # ---------------------------------------------------------------- mock
 class MockLLM(_JsonRetryMixin):
     """Deterministic, offline. Keyword classifier + template proposer; Phase 4 refines the proposer."""
@@ -120,13 +170,7 @@ class MockLLM(_JsonRetryMixin):
             m = re.search(r"CURRENT ARTICLE \[[^\]]*\]:\n(.*?)\n\nCASE SUMMARY", user, re.S)
             return {"proposed_body": m.group(1) if m else "", "reason": "mock: no change drafted"}
         if "You are CareGrid" in system:
-            return {
-                "answer_text": "1. A team member will review this request.",
-                "next_steps": [],
-                "questions_for_requester": [],
-                "summary_for_reviewer": "Mock summary.",
-                "citations": [],
-            }
+            return mock_propose(user)
         return {"ok": True}
 
     @staticmethod

@@ -7,8 +7,8 @@ import sys
 from caregrid import config
 
 # command -> phase that implements it (stubs until then)
-_STUBS = {"demo": 4, "eval": 7}
-_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", *_STUBS]
+_STUBS = {"eval": 7}
+_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", "demo", *_STUBS]
 
 
 def _short_err(e: Exception) -> str:
@@ -103,13 +103,34 @@ def cmd_lint() -> int:
 
 
 def cmd_reset() -> int:
-    """Partial (phase 1): wipe SQLite, regenerate data, recompile brain. Seed cases/trust load in phases 4-5."""
+    """Clean demo state: wipe SQLite, regenerate data, recompile the brain, then seed trust, ~20 historical cases and CASE-1024."""
+    from caregrid.knowledge.brain import Brain
+    from caregrid.llm import get_llm
+    from caregrid.seed import seed_all
     from caregrid.store import SQLiteStore
 
-    SQLiteStore().wipe()
+    store = SQLiteStore()
+    store.wipe()
     print(f"wiped {config.DB_PATH}")
     cmd_data()
-    return cmd_brain()
+    status = cmd_brain()
+    counts = seed_all(store, Brain(config.BRAIN_DIR), get_llm(), config.DATA_DIR)
+    print("seeded: " + ", ".join(f"{k}={v}" for k, v in counts.items()))
+    return status
+
+
+def cmd_demo() -> int:
+    """Run the acceptance scenarios headless against a throw-away in-memory store."""
+    from caregrid.demo import run_demo
+    from caregrid.knowledge.brain import Brain
+    from caregrid.llm import get_llm
+    from caregrid.store import SQLiteStore
+
+    if not (config.BRAIN_DIR / "index.md").exists():
+        print("second_brain/ is empty: run `python -m caregrid.cli reset` first.")
+        return 1
+    print(f"LLM_PROVIDER={config.LLM_PROVIDER} EMBED_PROVIDER={config.EMBED_PROVIDER}\n")
+    return run_demo(SQLiteStore(":memory:"), Brain(config.BRAIN_DIR), get_llm(), config.DATA_DIR)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_lint()
     if args.command == "reset":
         return cmd_reset()
+    if args.command == "demo":
+        return cmd_demo()
     print(f"'{args.command}' is not implemented yet (planned for phase {_STUBS[args.command]}).")
     return 0
 

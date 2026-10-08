@@ -141,5 +141,5 @@ def test_cli_llmcheck_fails_gracefully(monkeypatch, capsys):
 
 
 def test_cli_stub(capsys):
-    assert main(["demo"]) == 0
+    assert main(["eval"]) == 0
     assert "not implemented" in capsys.readouterr().out

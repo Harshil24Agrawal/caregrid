@@ -33,6 +33,7 @@ TODAY = date.fromisoformat(os.environ.get("CAREGRID_TODAY") or date.today().isof
 
 LLM_PROVIDER = _str("LLM_PROVIDER", "mock").lower()  # mock | bedrock | anthropic
 AWS_REGION = _str("AWS_REGION", "ap-south-1")
+LLM_TIMEOUT_S = _float("LLM_TIMEOUT_S", 20)   # per LLM call; on timeout the deterministic path takes over
 
 _DEFAULT_MODELS = {
     "anthropic": ("claude-haiku-5-5", "claude-sonnet-5-5"),
