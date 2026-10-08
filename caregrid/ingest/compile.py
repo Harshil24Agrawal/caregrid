@@ -13,7 +13,9 @@ from datetime import date, datetime
 from pathlib import Path
 
 from caregrid.ingest.anonymize import Gazetteer, anonymize, build_gazetteer
-from caregrid.ingest.pagefmt import render_page, write_text
+from caregrid.ingest.pagefmt import (
+    log_line, page_relpath, page_text, precedent_relpath, precedent_text, precedent_title, render_index, write_text,
+)
 from caregrid.models import Page, PageStatus, PageType, Precedent
 
 PAGE_DIRS = {t: t.value for t in PageType}
@@ -42,10 +44,10 @@ def _field_page_id(field: str) -> str:
     return "FIELD-" + field.upper().replace("_", "-")
 
 
-def _write_page(brain_dir: Path, page: Page, relpath: str) -> dict:
-    fm = page.model_dump(mode="json", exclude={"body"})
-    write_text(brain_dir / relpath, render_page(fm, page.body))
-    return {"id": page.id, "type": page.type.value, "status": page.status.value, "title": page.title, "path": relpath.replace("\\", "/")}
+def _write_page(brain_dir: Path, page: Page) -> dict:
+    relpath = page_relpath(page)
+    write_text(brain_dir / relpath, page_text(page))
+    return {"id": page.id, "type": page.type.value, "status": page.status.value, "title": page.title, "path": relpath}
 
 
 def compile_brain(data_dir: Path, brain_dir: Path) -> dict:
@@ -63,8 +65,8 @@ def compile_brain(data_dir: Path, brain_dir: Path) -> dict:
     index: list[dict] = []
     counts = {t.value: 0 for t in PageType}
 
-    def emit(page: Page, relpath: str) -> None:
-        index.append(_write_page(brain_dir, page, relpath))
+    def emit(page: Page) -> None:
+        index.append(_write_page(brain_dir, page))
         counts[page.type.value] += 1
 
     # ---- policies (versioned side by side; status from the CSV)
@@ -81,21 +83,21 @@ def compile_brain(data_dir: Path, brain_dir: Path) -> dict:
             owner=a["owner"] or None, request_types=[x for x in a["request_types"].split(";") if x],
             body=clean(a["body"]), meta=meta,
         )
-        emit(page, f"policy/{page.id}@v{page.version}.md")
+        emit(page)
 
     # ---- fields
     for f in _rows(data_dir / "field_definitions.csv"):
         page = Page(id=_field_page_id(f["field"]), type=PageType.FIELD, title=f["field"], status=PageStatus.APPROVED,
                     body=clean(f["meaning"]),
                     meta={"field": f["field"], "regex": f["regex"], "pii": f["pii"] == "true"})
-        emit(page, f"field/{page.id}.md")
+        emit(page)
 
     # ---- teams
     for t in _rows(data_dir / "teams.csv"):
         body = f"{t['name']} handles: {t['handles']}.\n\nDoes not handle: {t['does_not_handle']}."
         page = Page(id=t["id"], type=PageType.TEAM, title=t["name"], status=PageStatus.APPROVED, body=clean(body),
                     meta={"contact_email": t["contact_email"], "handles": t["handles"], "does_not_handle": t["does_not_handle"]})
-        emit(page, f"team/{page.id}.md")
+        emit(page)
 
     # ---- runbooks
     rb_text = (data_dir / "runbooks.md").read_text(encoding="utf-8")
@@ -103,12 +105,12 @@ def compile_brain(data_dir: Path, brain_dir: Path) -> dict:
     for m in re.finditer(r"^## (RB-\d+) (.+?)\n(.*?)(?=^## |\Z)", rb_text, re.S | re.M):
         runbook_ids[m.group(1)] = m.group(2)
         page = Page(id=m.group(1), type=PageType.RUNBOOK, title=m.group(2), status=PageStatus.APPROVED, body=clean(m.group(3)))
-        emit(page, f"runbook/{page.id}.md")
+        emit(page)
 
     # ---- regulatory (authored)
     for rid, title, body in (("REG-HIPAA", "HIPAA - PHI and Safe Harbor identifiers", REG_HIPAA),
                              ("REG-DPDP", "India DPDP Act 2023 - summary", REG_DPDP)):
-        emit(Page(id=rid, type=PageType.REGULATORY, title=title, status=PageStatus.APPROVED, body=body), f"regulatory/{rid}.md")
+        emit(Page(id=rid, type=PageType.REGULATORY, title=title, status=PageStatus.APPROVED, body=body))
 
     # ---- workflows (+ routing rules folded into meta)
     rules = {r["condition"]: r for r in _rows(data_dir / "routing_rules.csv")}
@@ -122,7 +124,7 @@ def compile_brain(data_dir: Path, brain_dir: Path) -> dict:
         meta["approver_role"] = rr["approver_role"] if rr else "team_specialist"
         body = "\n".join(f"{i}. {s}" for i, s in enumerate(wf["steps"], 1))
         emit(Page(id=wf["id"], type=PageType.WORKFLOW, title=wf["title"], status=PageStatus.APPROVED,
-                  request_types=[wf["request_type"]], links=links, body=body, meta=meta), f"workflow/{wf['id']}.md")
+                  request_types=[wf["request_type"]], links=links, body=body, meta=meta))
 
     # ---- precedents (masked raw_text -> summary; STALE when policy version is no longer current)
     stale = 0
@@ -139,20 +141,16 @@ def compile_brain(data_dir: Path, brain_dir: Path) -> dict:
             status=PageStatus.STALE if is_stale else PageStatus.ACTIVE, date=date.fromisoformat(h["date"]),
             outcome=clean(h["outcome"]),
         )
-        fm = {"id": prec.id, "type": "precedent", **prec.model_dump(mode="json", exclude={"id", "summary"})}
-        write_text(brain_dir / f"precedent/{prec.id}.md", render_page(fm, prec.summary))
+        write_text(brain_dir / precedent_relpath(prec), precedent_text(prec))
         index.append({"id": prec.id, "type": "precedent", "status": prec.status.value,
-                      "title": f"{prec.request_type}: {prec.decision_code.value}", "path": f"precedent/{prec.id}.md"})
+                      "title": precedent_title(prec), "path": precedent_relpath(prec)})
         counts["precedent"] += 1
 
     # ---- config copy for rules.py
     shutil.copyfile(data_dir / "routing_rules.csv", _ensure(brain_dir / "config" / "routing_rules.csv"))
 
     # ---- index.md + log.md
-    lines = ["# Second Brain index", ""]
-    for e in sorted(index, key=lambda e: (e["type"], e["id"], e["path"])):
-        lines.append(f"- [{e['id']}]({e['path']}) - {e['type']} - {e['status']} - {e['title']}")
-    write_text(brain_dir / "index.md", "\n".join(lines) + "\n")
+    write_text(brain_dir / "index.md", render_index(index))
     stamp = datetime.now().isoformat(timespec="seconds")
     summary = ", ".join(f"{k}={v}" for k, v in counts.items())
     write_text(brain_dir / "log.md",

@@ -145,6 +145,7 @@ class RetrievalResult(BaseModel):
     precedents_active: list[ScoredPrecedent] = []
     precedents_stale: list[ScoredPrecedent] = []
     regulatory: list[Page] = []
+    case_facts: dict[str, str] = {}          # derived before rules: category, missing, risk, team (used for precedent matching)
 
 class RuleResult(BaseModel):
     required_fields: list[str] = []

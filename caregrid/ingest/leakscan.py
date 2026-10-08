@@ -1,11 +1,11 @@
 """Scan every file in second_brain/ for PII. Findings use LintFinding(code="PII_LEAK"); values are never echoed."""
 from __future__ import annotations
 
+import csv
 import re
 from pathlib import Path
 
 from caregrid import config
-from caregrid.constants import ORG_EMAIL_DOMAIN
 from caregrid.ingest.anonymize import DOB, EMAIL, MEMBER_ID, PHONE_IN, PHONE_US, build_gazetteer
 from caregrid.models import LintFinding
 
@@ -14,9 +14,20 @@ VERSIONED_FILE = re.compile(r"@v\d+\.md")
 DIGITS_9_10 = re.compile(r"(?<![\w.-])\d{9,10}(?![\w])")
 
 
+def team_mailboxes(data_dir: Path) -> set[str]:
+    """Exact contact_email values from teams.csv: the only emails allowed in the brain."""
+    path = Path(data_dir) / "teams.csv"
+    if not path.exists():
+        return set()
+    with open(path, encoding="utf-8", newline="") as f:
+        return {r["contact_email"].lower() for r in csv.DictReader(f) if r.get("contact_email")}
+
+
 def leak_scan(brain_dir: Path, data_dir: Path | None = None) -> list[LintFinding]:
     brain_dir = Path(brain_dir)
-    gaz = build_gazetteer(Path(data_dir) if data_dir is not None else config.DATA_DIR)
+    data_dir = Path(data_dir) if data_dir is not None else config.DATA_DIR
+    gaz = build_gazetteer(data_dir)
+    allowed_emails = team_mailboxes(data_dir)
     literals = {"name": list(gaz.names), "address": gaz.addresses, "phone": gaz.phones, "email": gaz.emails}
     findings: list[LintFinding] = []
 
@@ -26,7 +37,7 @@ def leak_scan(brain_dir: Path, data_dir: Path | None = None) -> list[LintFinding
         hits: set[str] = set()
 
         for m in EMAIL.finditer(text):
-            if not m.group(0).lower().endswith("@" + ORG_EMAIL_DOMAIN):
+            if m.group(0).lower() not in allowed_emails:
                 hits.add("email address")
         if MEMBER_ID.search(text):
             hits.add("member ID")

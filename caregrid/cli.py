@@ -7,8 +7,8 @@ import sys
 from caregrid import config
 
 # command -> phase that implements it (stubs until then)
-_STUBS = {"lint": 2, "demo": 4, "eval": 7}
-_COMMANDS = ["data", "brain", "reset", *_STUBS]
+_STUBS = {"demo": 4, "eval": 7}
+_COMMANDS = ["data", "brain", "lint", "reset", *_STUBS]
 
 
 def _short_err(e: Exception) -> str:
@@ -68,6 +68,22 @@ def cmd_brain() -> int:
     return 1 if findings else 0
 
 
+def cmd_lint() -> int:
+    from caregrid.knowledge.brain import Brain
+    from caregrid.knowledge.lint import lint
+    from caregrid.store import SQLiteStore
+
+    findings = lint(Brain(config.BRAIN_DIR), SQLiteStore() if config.DB_PATH.exists() else None)
+    print(f"lint: {len(findings)} finding(s)")
+    for sev in ("error", "warning", "info"):
+        group = [f for f in findings if f.severity == sev]
+        if group:
+            print(f"\n{sev.upper()} ({len(group)})")
+            for f in group:
+                print(f"  [{f.code}] {f.message}")
+    return 0
+
+
 def cmd_reset() -> int:
     """Partial (phase 1): wipe SQLite, regenerate data, recompile brain. Seed cases/trust load in phases 4-5."""
     from caregrid.store import SQLiteStore
@@ -91,6 +107,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_data()
     if args.command == "brain":
         return cmd_brain()
+    if args.command == "lint":
+        return cmd_lint()
     if args.command == "reset":
         return cmd_reset()
     print(f"'{args.command}' is not implemented yet (planned for phase {_STUBS[args.command]}).")

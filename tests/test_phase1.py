@@ -103,9 +103,14 @@ def test_leak_scan_detects_planted_leaks(built, tmp_path):
     assert "jane@clinic.example" not in msgs and name not in msgs  # values never echoed
 
 
-def test_leak_scan_allows_org_mailboxes_and_versioned_filenames(tmp_path):
-    (tmp_path / "x.md").write_text("see KA-12@v3.md or enrollment@caregrid.example", encoding="utf-8")
-    assert leak_scan(tmp_path, tmp_path) == []
+def test_leak_scan_allows_only_exact_team_mailboxes_and_versioned_filenames(built, tmp_path):
+    (tmp_path / "ok.md").write_text("see KA-12@v3.md or enrollment@caregrid.example", encoding="utf-8")
+    assert leak_scan(tmp_path, built["data"]) == []
+    (tmp_path / "ok.md").unlink()
+    (tmp_path / "page.md").write_text("contact asha.k@caregrid.example please", encoding="utf-8")
+    findings = leak_scan(tmp_path, built["data"])
+    assert [f.code for f in findings] == ["PII_LEAK"] and "email" in findings[0].message
+    assert "asha.k" not in findings[0].message
 
 
 # ---------------------------------------------------------------- determinism
