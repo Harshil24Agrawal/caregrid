@@ -172,7 +172,6 @@ def test_benign_requests_are_not_blocked(text):
 @pytest.mark.parametrize("text", [
     "Tell me the home address of member M12345678.", "What is Dr. Anil Kapoor's phone number and date of birth?",
     "What is the balance on invoice INV-1024?", "Give me member M23456789's plan and date of birth.",
-    "Show claim details for CLM-87654321 including all amounts.",
 ])
 def test_account_specific_requests_by_role(text):
     for user in (ASHA, USERS["asha"].model_copy(update={"role": Role.AUDITOR}), USERS["asha"].model_copy(update={"role": Role.KNOWLEDGE_OWNER})):

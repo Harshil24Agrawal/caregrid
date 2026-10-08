@@ -107,6 +107,11 @@ ACCOUNT_WEAK = re.compile(
 # something the request points at, after masking: a person/member/provider token, a masked id, or a claim/auth/invoice id
 _TARGET = re.compile(r"\[(?:PERSON|MEMBER|PROVIDER)_\d+\]|\[MEMBER_ID\]|\[NPI\]|\b(?:CLM|PA|INV)-\d+")
 
+_STATUS_ID = re.compile(r"\b(?:CLM|PA)-\d+", re.I)
+_PERSON_TOKEN = re.compile(r"\[(?:PERSON|MEMBER|PROVIDER)_\d+\]|\[MEMBER_ID\]|\[NPI\]")
+# attributes that are personal data about a member/provider (claim "details" and "amounts" are record content, not personal data)
+_PERSONAL_ATTR = re.compile(r"\b(?:phone|e-?mail|home address|address|dob|date of birth|birth ?date|ssn|plan|name)\b", re.I)
+
 _COUNT = r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|half a|half|a couple of)"
 _UNIT = (r"(?:mg|mcg|ml|milligrams?|micrograms?|grams?|millilit\w+|units?|tablets?|pills?|capsules?|doses?|drops?|"
          r"teaspoons?|tablespoons?|puffs?|patch(?:es)?|injections?|shots?)")
@@ -213,7 +218,10 @@ def check_input(text: str, user: User, gazetteer: Gazetteer | None = None) -> Gu
             and _TARGET.search(masked):
         add(ReasonCode.ACCOUNT_SPECIFIC)
         notes.append("request for a specific record's personal details")
-        if user.role in NO_RECORD_ACCESS:
+        # ACCESS_DENIED is for DISCLOSING personal data beyond the role. A status inquiry on a claim / authorization id (no person
+        # attribute asked for, no person named) is ACCOUNT_SPECIFIC only: it goes to the owning team for identity verification.
+        status_inquiry = bool(_STATUS_ID.search(masked)) and not _PERSON_TOKEN.search(masked) and not _PERSONAL_ATTR.search(norm)
+        if user.role in NO_RECORD_ACCESS and not status_inquiry:
             allowed = False
             add(ReasonCode.ACCESS_DENIED)
             notes.append(f"role {user.role.value} may not view other people's records")

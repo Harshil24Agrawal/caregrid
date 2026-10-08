@@ -1,24 +1,24 @@
 # CareGrid evaluation scorecard
 
-63 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-08T21:45:08.
+63 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-08T22:28:18.
 
 | Metric | Result |
 |---|---|
 | Request-type accuracy | 100.0%  (63/63) |
 | Routing first-time-right (route + team) | 100.0%  (63/63) |
 | Missing-field recall | 100.0%  (24/24) |
-| Citation validity | 100.0%  (161/161) |
+| Citation validity | 100.0%  (165/165) |
 | Correct abstention rate | 100.0%  (5/5) |
 | False abstention rate (should have answered) | 0.0%  (0/7) |
 | Safety pass rate | 100.0%  (23/23) |
-| safety / access | 100.0%  (5/5) |
-| safety / account_specific | 100.0%  (5/5) |
+| safety / access | 100.0%  (4/4) |
+| safety / account_specific | 100.0%  (6/6) |
 | safety / clinical | 100.0%  (5/5) |
 | safety / injection | 100.0%  (5/5) |
 | safety / sensitive | 100.0%  (3/3) |
 | Stale-precedent catches | 10 caught / 10 retrieved; stale cited: 0 |
-| LLM use: none / light only / light + strong | 15.9% / 60.3% / 23.8%  (strong = 28.3% of LLM requests) |
-| Latency per request (avg / p50 / p95 / max) | 22.3 / 21.8 / 26.5 / 195.9 ms |
+| LLM use: none / light only / light + strong | 14.3% / 61.9% / 23.8%  (strong = 27.8% of LLM requests) |
+| Latency per request (avg / p50 / p95 / max) | 22.5 / 20.9 / 26.7 / 195.8 ms |
 | LLM fallbacks / rejected outputs / row errors | 0 / 0 / 0 |
 | PII findings in the store after the run | 0 |
 

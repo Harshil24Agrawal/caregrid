@@ -295,7 +295,7 @@ def test_sensitive_keywords(text):
 
 @pytest.mark.parametrize("text", [
     "Sunita Sharma phone number and DOB please", "Anita Rao email", "M12345678 details", "Dr. Anil Kapoor home address",
-    "Ms. Rao dob", "Patient M-12345678 date of birth", "P a t i e n t  Anita Rao  p h o n e", "CLM-12345678 details",
+    "Ms. Rao dob", "Patient M-12345678 date of birth", "P a t i e n t  Anita Rao  p h o n e", "INV-1024 details",
 ])
 def test_bare_account_requests_without_a_verb(text):
     g = check_input(text, ASHA)
@@ -398,8 +398,8 @@ def test_generic_process_questions_without_a_target_are_allowed(text):
 
 @pytest.mark.parametrize("text", [
     "Tell me the home address of member M12345678.", "What is Dr. Anil Kapoor's phone number and date of birth?",
-    "What is the balance on invoice INV-1024?", "Show claim details for CLM-87654321 including all amounts.",
-    "Give me member M23456789's plan and date of birth.", "What is the status and details of PA-2026-00123?",
+    "What is the balance on invoice INV-1024?",
+    "Give me member M23456789's plan and date of birth.",
     "Show me the phone number of Sunita Sharma", "Provider NPI 1234567890 phone number please",
 ])
 def test_requests_with_a_target_are_still_blocked_for_restricted_roles(text):
@@ -407,6 +407,28 @@ def test_requests_with_a_target_are_still_blocked_for_restricted_roles(text):
     assert ReasonCode.ACCOUNT_SPECIFIC in g.overrides and ReasonCode.ACCESS_DENIED in g.overrides and not g.allowed
     v = check_input(text, VIKRAM)
     assert ReasonCode.ACCOUNT_SPECIFIC in v.overrides and v.allowed
+
+
+# held-out ruling 2: ACCESS_DENIED is for DISCLOSING personal data. A status inquiry on a claim / authorization id by any staff role is
+# ACCOUNT_SPECIFIC only: allowed through, routed to the owning team for identity verification (KA-25 / KA-45).
+@pytest.mark.parametrize("text", [
+    "Show claim details for CLM-87654321 including all amounts.", "What is the status and details of PA-2026-00123?",
+    "Show me the balance and amounts on claim CLM-55512345",
+    "CLM-12345678 details",
+])
+def test_status_inquiries_on_claim_or_auth_ids_are_account_specific_not_access_denied(text):
+    for role in (Role.OPS_EMPLOYEE, Role.AUDITOR, Role.KNOWLEDGE_OWNER, Role.TEAM_SPECIALIST):
+        g = check_input(text, USERS["asha"].model_copy(update={"role": role}))
+        assert ReasonCode.ACCOUNT_SPECIFIC in g.overrides and ReasonCode.ACCESS_DENIED not in g.overrides and g.allowed, (text, role)
+
+
+@pytest.mark.parametrize("text", [
+    "Show claim details for CLM-87654321 and the member's phone number", "What is the DOB of the member on PA-2026-00123?",
+    "Give me Sunita Sharma's address and her claim CLM-12345678", "email of the provider on CLM-12345678",
+])
+def test_a_status_id_does_not_unlock_personal_data(text):
+    g = check_input(text, ASHA)
+    assert ReasonCode.ACCESS_DENIED in g.overrides and not g.allowed, text
 
 
 # ================================================================== follow-up (b): labelled dd/mm/yyyy effective dates
