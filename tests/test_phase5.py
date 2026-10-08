@@ -617,7 +617,7 @@ def test_raw_contacts_never_reach_the_database(env):
     stored = env.store.list_comms(case.id)
     assert [c.recipient for c in stored] == ["[EMAIL]", "[PHONE]"]
     assert all("For queries: [EMAIL] · [PHONE]" in c.message for c in stored)
-    dump = " ".join(c.model_dump_json() for c in stored) + " ".join(e.model_dump_json() for e in env.audit(case.id))
+    dump = " ".join(f"{c.recipient} {c.message}" for c in stored) + " ".join(str(e.details) for e in env.audit(case.id))   # ids and timestamps are random digits
     for raw in ("enroll.desk", "98100", "12345", "clinic.example"):
         assert raw not in dump, raw
     assert leak_scan_store(env.store, env.data) == [] and not env.audit(case.id, "comms_contacts_allowlisted")
