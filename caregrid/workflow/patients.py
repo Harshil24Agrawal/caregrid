@@ -29,6 +29,13 @@ MIN_REASON_CHARS = 10
 ACCESS_EVENTS = ("record_viewed", "record_revealed")
 
 
+MAX_LOOKUPS_PER_MINUTE = 10
+
+
+class LookupRateLimited(Exception):
+    """More than MAX_LOOKUPS_PER_MINUTE lookups by Health ID from one user in the last minute (guessing IDs)."""
+
+
 class BadHealthId(ValueError):
     """The text looks like a Health ID but its checksum is wrong."""
 
@@ -41,10 +48,10 @@ def resolve(ref: str, data_dir: Path) -> dict | None:
 
 def member_for_id(text: str, data_dir: Path) -> dict | None:
     """The member for a typed Health ID (any typing). A well-formed ID with a wrong checksum raises BadHealthId."""
-    m = health_id.ANY.search(health_id.normalise_text(text or ""))
-    if m is None:
+    found = health_id.find(health_id.normalise_text(text or ""))
+    if not found:
         return None
-    normal = health_id.format_id(re.sub(r"\D", "", m.group(1)))
+    normal = health_id.format_id(found[0][2])
     if not health_id.is_valid(normal):
         raise BadHealthId()
     return health_id.member_by_id(normal, data_dir)
@@ -94,6 +101,12 @@ def _denied(store: Store, viewer: User, via: str, reason: str) -> None:
 def lookup(health_id_text: str, viewer: User, store: Store, data_dir: Path, audit: bool = True) -> dict | None:
     """Open a record by a typed Health ID (the ID travels in a POST body, never in a URL). None = unknown or not allowed (same answer);
     a wrong checksum raises BadHealthId. Refusals are audited without the ID."""
+    if audit:
+        since = datetime.now() - timedelta(minutes=1)
+        if len([e for e in store.list_audit() if e.event == "record_lookup" and e.actor_id == viewer.id and e.ts >= since]) >= MAX_LOOKUPS_PER_MINUTE:
+            log(store, "lookup_rate_limited", viewer, None, role=viewer.role.value, limit=MAX_LOOKUPS_PER_MINUTE)
+            raise LookupRateLimited()
+        log(store, "record_lookup", viewer, None, role=viewer.role.value)             # a lookup happened: no ID, no outcome
     try:
         member = member_for_id(health_id_text, data_dir)
     except BadHealthId:

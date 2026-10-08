@@ -177,9 +177,9 @@ def test_reveal_reason_is_masked_before_it_is_audited(client):
 
 def test_comms_never_carry_the_health_id(client):
     hid = members()[0]["health_id"]
-    case = post_request(client, "asha", f"Provider NPI 1234567890 legally changed name from Priya Nair to Priya Menon, W-9 attached. Patient {hid}.")
-    assert case["state"] == "in_review"
-    r = client.post(f"/api/cases/{case['id']}/decision", headers=H["vikram"],
+    case = post_request(client, "neha", f"Provider NPI 1234567890 legally changed name from Priya Nair to Priya Menon, W-9 attached. Patient {hid}.")
+    assert case["state"] == "in_review"                                    # a name word next to a Health ID: sent to a person (recall over precision)
+    r = client.post(f"/api/cases/{case['id']}/decision", headers=H["rahul"],
                     json={"action": "approve", "channels": ["email", "whatsapp"], "contact_email": "desk@clinic.example", "contact_phone": "+91 98100 12345"})
     assert r.status_code == 200, r.text
     comms = client.get("/api/comms", headers=H["rahul"]).json()

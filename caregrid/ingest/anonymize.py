@@ -26,8 +26,6 @@ EMAIL = re.compile(
 # malformed IDs (M + 5..12 digits, optional '-' or space) are masked too; validity is judged by the guard on the raw text
 MEMBER_ID = re.compile(r"(?i)(?<![\w-])m[- ]?\d{5,12}(?!\w)")
 # CareGrid Health ID in any typing (CG-1234-5678-9012, CG 1234 5678 9012, CG123456789012) and any malformed CG- number; the guard judges validity on the raw text
-HEALTH_ID = health_id.ANY
-HEALTH_ID_LOOSE = health_id.LOOSE
 # more member-id shapes: MBR12345678, MEM-AB12345, "member id: 12345678"
 MEMBER_ID_VARIANTS = re.compile(
     r"(?i)(?<![\w-])(?:(?:MBR|MEM)[- ]?(?=[A-Z0-9]*\d)[A-Z0-9]{5,14}|member\s*(?:id|no\.?|number|#)\s*[:#-]?\s*\d{5,12})(?!\w)")
@@ -216,8 +214,10 @@ def anonymize(text: str, gazetteer: Gazetteer | None = None, cueless: bool = Tru
         s = ISO_DATE.sub(stash, s)
 
     s = sub(EMAIL, "[EMAIL]", s, "EMAIL", _AT)
-    s = sub(HEALTH_ID, "[HEALTH_ID]", s, "HEALTH_ID", _DIGIT)
-    s = sub(HEALTH_ID_LOOSE, "[HEALTH_ID]", s, "HEALTH_ID", _DIGIT)
+    if _DIGIT.search(s):
+        s, hit = health_id.mask_text(s)
+        if hit:
+            found.add("HEALTH_ID")
 
     def bare_health_id(m: re.Match[str]) -> str:
         if health_id.verhoeff_valid(re.sub(r"\D", "", m.group(0))):

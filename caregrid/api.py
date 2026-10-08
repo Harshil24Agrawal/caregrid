@@ -645,9 +645,12 @@ class LookupIn(BaseModel):
 @app.post("/api/patients/lookup")
 def api_patient_lookup(body: LookupIn, user: User = Depends(actor)):
     """Open a record by a typed Health ID. The ID is in the body, never in a URL or a log line. A wrong checksum is 422; an unknown id and an id
-    the caller may not open give the SAME 404. Refusals are audited as record_lookup_denied (role and reason, never the ID)."""
+    the caller may not open give the SAME 404. Refusals are audited as record_lookup_denied (role and reason, never the ID);
+    more than 10 lookups a minute per user get 429 (audited as lookup_rate_limited)."""
     try:
         rec = patients_mod.lookup(body.health_id, user, get_store(), config.DATA_DIR)
+    except patients_mod.LookupRateLimited as e:
+        raise HTTPException(status_code=429, detail="Too many lookups this minute (limit 10). Try again shortly.") from e
     except patients_mod.BadHealthId as e:
         raise HTTPException(status_code=422, detail="The Health ID does not pass its checksum. Please re-check the digits.") from e
     if rec is None:

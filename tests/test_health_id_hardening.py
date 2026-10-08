@@ -40,7 +40,9 @@ def typings(hid):
         "digits one by one with hyphens": "CG-" + "-".join(d), "mixed separators": f"CG-{g[0]} {g[1]}.{g[2]}", "NUL inside": "CG-" + g[0] + "\x00" + "-" + g[1] + "-" + g[2],
         "NUL in the digits": "CG-" + d[:6] + "\x00" + d[6:], "zero-width inside": "CG-​" + g[0] + "‍-" + g[1] + "-" + g[2], "full-width": "ＣＧ－" + d,
         "Cyrillic prefix": "СГ-" + "-".join(g), "Greek gamma": "CΓ-" + "-".join(g), "Cyrillic C and G": "СG" + d,
-        "spaces around separators": f"CG - {g[0]} - {g[1]} . {g[2]}", "bare 12 digits": d, "bare spaced groups": " ".join(g), "bare hyphen groups": "-".join(g),
+        "Gamma Sigma prefix": "ΓΣ-" + "-".join(g), "words between groups": f"CG-{g[0]} then {g[1]} then {g[2]}", "line breaks": f"CG-{g[0]}\n{g[1]}\n{g[2]}",
+        "Cyrillic lower-case prefix": "сг " + " ".join(g), "math bold prefix": "𝐂𝐆-" + "-".join(g), "lunate sigma + Gamma": "ϹΓ-" + "-".join(g),
+        "punctuation between groups": f"CG: {g[0]}, ({g[1]}); [{g[2]}]", "spaces around separators": f"CG - {g[0]} - {g[1]} . {g[2]}", "bare 12 digits": d, "bare spaced groups": " ".join(g), "bare hyphen groups": "-".join(g),
     }
 
 
@@ -116,6 +118,8 @@ def test_the_normaliser_strips_nul_and_folds_g_lookalikes():
 
 # ------------------------------------------------------------------ the guard treats a Health ID like a member ID
 ATTRIBUTE_REQUESTS = [
+    "full name of the patient {id}", "phone no. for {id}", "contact for {id}", "which patient is {id}", "mobile for {id}", "{id} number please",
+    "Please find the owner. Patient {id}.", "Patient {id} - please send the details", "Who is {id}?", "{id}: DOB and address",
     "What is the phone number of patient {id}?", "Give me the date of birth of patient {id}", "Show me the home address of {id}",
     "email of {id} please", "name of the patient {id}", "change phone for {id}", "who owns {id}", "{id} details", "Patient {id} date of birth",
     "Tell me the name and DOB of {id}", "P a t i e n t  {id}  p h o n e",
@@ -134,12 +138,28 @@ def test_requests_for_a_patients_details_are_account_specific(template):
 
 @pytest.mark.parametrize("text", [
     "What supporting documents are accepted for provider record changes? Patient {id}.",
-    "Provider NPI 1234567890 legally changed name from Priya Nair to Priya Menon, W-9 attached. Patient {id}.",
-    "Please file the form for patient {id}.",
+    "Please file the form for patient {id}.", "Patient {id} needs the forms for the claims team.",
 ])
-def test_a_health_id_alone_does_not_make_a_request_account_specific(text):
+def test_a_plain_s8_request_is_not_flagged(text):
     g = check_input(text.format(id=member()["health_id"]), ASHA)
     assert g.allowed and not {o.value for o in g.overrides} & {"ACCOUNT_SPECIFIC", "ACCESS_DENIED"}
+
+
+def test_an_identity_word_anywhere_makes_it_account_specific_even_in_a_name_change():
+    text = "Provider NPI 1234567890 legally changed name from Priya Nair to Priya Menon, W-9 attached. Patient {id}."
+    g = check_input(text.format(id=member()["health_id"]), ASHA)
+    assert "ACCOUNT_SPECIFIC" in {o.value for o in g.overrides}
+
+
+def test_dates_amounts_and_business_ids_are_never_touched():
+    text = "effective 2026-11-01, cost ₹62,500, CASE-1024, INV-1024, KA-40 v1, PA-2026-00123, CLM-12345678, E1390, NPI 1234567890"
+    g = check_input(text, VIKRAM)
+    assert "[HEALTH_ID]" not in g.masked_text and "2026-11-01" in g.masked_text and "62,500" in g.masked_text
+    for keep in ("CASE-1024", "INV-1024", "KA-40", "PA-2026-00123", "CLM-12345678", "E1390"):
+        assert keep in g.masked_text
+    near = check_input("Patient CG-9611 5938 3588 effective 2026-11-01 cost ₹62,500 see CASE-1024", VIKRAM).masked_text
+    assert near == "Patient [HEALTH_ID] effective 2026-11-01 cost ₹62,500 see CASE-1024"
+    assert check_input("CG 2026-11-01 and CG ₹62,500", VIKRAM).masked_text == "CG 2026-11-01 and CG ₹62,500"
 
 
 # ------------------------------------------------------------------ oracle-free display, no ID in URLs
@@ -202,3 +222,13 @@ def test_five_reveals_per_hour_then_429_and_an_audit_event(client):
     limited = [e for e in api.get_store().list_audit() if e.event == "reveal_rate_limited"]
     assert limited and limited[-1].actor_id == "U4" and limited[-1].details == {"role": "senior_reviewer", "limit": 5}
     assert api.get_store().list_audit() and len([e for e in api.get_store().list_audit() if e.event == "record_revealed" and e.actor_id == "U4"]) == 5
+
+
+def test_lookup_by_id_is_limited_to_ten_a_minute_per_user(client):
+    ids = three_ids()
+    codes = [client.post("/api/patients/lookup", headers=H["neha"], json={"health_id": ids["unknown"]}).status_code for _ in range(12)]
+    assert codes[:10] == [404] * 10 and codes[10:] == [429, 429]
+    limited = [e for e in api.get_store().list_audit() if e.event == "lookup_rate_limited"]
+    assert limited and limited[-1].actor_id == "U3" and limited[-1].details == {"role": "ops_manager", "limit": 10}
+    assert not any(digit_residue(json.dumps([e.details for e in api.get_store().list_audit() if e.event.startswith(("record_lookup", "lookup_"))]), h) for h in ids.values())
+    assert client.post("/api/patients/lookup", headers=H["rahul"], json={"health_id": ids["valid"]}).status_code == 200      # another user is unaffected
