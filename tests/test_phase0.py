@@ -140,6 +140,9 @@ def test_cli_llmcheck_fails_gracefully(monkeypatch, capsys):
     assert "FAIL init" in capsys.readouterr().out
 
 
-def test_cli_stub(capsys):
-    assert main(["eval"]) == 0
-    assert "not implemented" in capsys.readouterr().out
+def test_every_listed_command_is_real_and_unknown_ones_are_rejected(capsys):
+    from caregrid import cli
+
+    assert cli._STUBS == {}                       # no command is a placeholder any more
+    with pytest.raises(SystemExit):
+        main(["nonsense"])

@@ -7,8 +7,8 @@ import sys
 from caregrid import config
 
 # command -> phase that implements it (stubs until then)
-_STUBS = {"eval": 7}
-_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", "demo", *_STUBS]
+_STUBS: dict[str, int] = {}
+_COMMANDS = ["data", "brain", "leakscan", "lint", "reset", "demo", "eval", *_STUBS]
 
 
 def _short_err(e: Exception) -> str:
@@ -154,11 +154,30 @@ def cmd_demo(provider: str = "mock") -> int:
         return run_demo(SQLiteStore(":memory:"), Brain(Path(tmp) / "brain"), llm, config.DATA_DIR)
 
 
+def cmd_eval(provider: str = "mock", limit: int | None = None) -> int:
+    """Run eval/requests_eval.csv through the pipeline and write eval/scorecard.json + eval/scorecard.md."""
+    from caregrid.scorecard import render_table, run_eval, write_outputs
+
+    if not (config.BRAIN_DIR / "index.md").exists() or not (config.EVAL_DIR / "requests_eval.csv").exists():
+        print("second_brain/ or eval/requests_eval.csv is missing: run `python -m caregrid.cli reset` first.")
+        return 1
+    llm = llm_for(provider)
+    if provider == "env":
+        print(f"provider env -> {config.LLM_PROVIDER}; pacing to LLM_MAX_RPM={config.LLM_MAX_RPM} (about 2 requests per row)")
+    card = run_eval(provider, limit=limit, echo=print, llm=llm)
+    print()
+    print(render_table(card))
+    for path in write_outputs(card):
+        print(f"wrote {path.relative_to(config.ROOT) if path.is_relative_to(config.ROOT) else path}")
+    return 1 if card["metrics"]["errors"] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="python -m caregrid.cli", description="CareGrid command line")
     parser.add_argument("command", choices=[*_COMMANDS, "llmcheck"])
+    parser.add_argument("--limit", type=int, default=None, help="eval only: run just the first N rows (writes a *.partial.* scorecard)")
     parser.add_argument("--provider", choices=["mock", "env"], default="mock",
                         help="demo/eval only: mock = deterministic offline LLM (default); env = the provider configured in .env")
     args = parser.parse_args(argv)
@@ -177,6 +196,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_reset()
     if args.command == "demo":
         return cmd_demo(args.provider)
+    if args.command == "eval":
+        return cmd_eval(args.provider, args.limit)
     print(f"'{args.command}' is not implemented yet (planned for phase {_STUBS[args.command]}).")
     return 0
 
