@@ -87,8 +87,10 @@ def _draft_body(current_body: str, page_id: str, version: int, case: Case, d: Re
 
 
 def unified_diff(old: str, new: str, page_id: str) -> str:
-    return "".join(difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True),
-                                        fromfile=f"{page_id} (current)", tofile=f"{page_id} (proposed)"))
+    def lines(text: str) -> list[str]:
+        return [ln if ln.endswith("\n") else ln + "\n" for ln in text.splitlines(keepends=True)]   # a missing final newline would glue -/+ lines together
+
+    return "".join(difflib.unified_diff(lines(old), lines(new), fromfile=f"{page_id} (current)", tofile=f"{page_id} (proposed)"))
 
 
 def draft_pr(case: Case, d: ReviewDecision, brain: Brain, llm: LLM, store: Store | None = None) -> KnowledgePR | None:

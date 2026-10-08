@@ -1,112 +1,95 @@
-/* Dashboard: tiles, my queue, trust ladder, gap radar, queue ageing, cost split, scorecard. Everything comes from /api/metrics, /api/cases, /api/scorecard. */
+/* Dashboard: one question - what needs me right now? Data: /api/metrics, /api/cases, /api/scorecard, /api/audit. */
 (async function () {
-  var me = await CG.init('index.html', 'Dashboard');
+  var me = await CG.init('index.html');
   var el = document.getElementById('content');
   CG.loading(el, 'Loading the dashboard…');
-  var m, cases, sc;
+  var m, cases, sc, audit;
   try {
-    var r = await Promise.all([CG_API.get('/api/metrics'), CG_API.get('/api/cases'), CG_API.get('/api/scorecard')]);
-    m = r[0]; cases = r[1]; sc = r[2];
+    var r = await Promise.all([CG_API.get('/api/metrics'), CG_API.get('/api/cases'), CG_API.get('/api/scorecard'), CG_API.get('/api/audit?limit=2000')]);
+    m = r[0]; cases = r[1]; sc = r[2]; audit = r[3];
   } catch (e) { CG.fail(e); el.innerHTML = CG.empty('Could not load the dashboard.'); return; }
 
-  var c = m.counts;
+  var c = m.counts, RANK = { critical: 4, high: 3, medium: 2, low: 1 };
+  var queue = m.queue.slice().sort(function (a, b) { return (RANK[b.risk] || 0) - (RANK[a.risk] || 0) || b.age_hours - a.age_hours; });
+  var waiting = c.awaiting_review + c.escalated;
+  var conflicts = queue.filter(function (q) { return q.reason_codes.indexOf('POLICY_CONFLICT') >= 0; });
   var openHigh = cases.filter(function (x) { return (x.risk === 'high' || x.risk === 'critical') && ['in_review', 'needs_info', 'escalated'].indexOf(x.state) >= 0; }).length;
-  function tile(label, value, sub, icon) {
-    return '<div class="tile"><div class="flex items-center justify-between"><span class="eyebrow">' + CG.esc(label) + '</span><span class="material-symbols-outlined text-slate-400">' + icon +
-      '</span></div><div class="num mt-1">' + CG.esc(value) + '</div><div class="text-body-sm text-slate-500 mt-1">' + CG.esc(sub || '') + '</div></div>';
+  var top = queue[0];
+
+  // ---- attention banner (computed from the data above)
+  var banner;
+  if (!queue.length) {
+    banner = '<div class="banner green"><div class="grow"><b>Nothing is waiting for you.</b> New requests that need a person will show up here.</div><a class="btn primary" href="intake.html">New request</a></div>';
+  } else {
+    var hot = (RANK[top.risk] || 0) >= 3 || conflicts.length > 0;
+    banner = '<div class="banner ' + (hot ? 'red' : 'amber') + '"><div class="grow"><b>' + waiting + ' case' + (waiting === 1 ? ' is' : 's are') + ' waiting for review' + (c.needs_info ? ' and ' + c.needs_info + ' for the requester' : '') + '.</b> ' +
+      'Highest risk: ' + CG.esc(top.id) + ' (' + CG.esc(top.risk) + ' risk, ' + CG.esc(CG.what(top.request_type).toLowerCase()) + ')' +
+      (conflicts.length ? '. ' + conflicts.length + ' with policies that disagree' : '') + '.</div>' +
+      '<a class="btn primary" href="case.html?case=' + encodeURIComponent(top.id) + '&decide=1">Review ' + CG.esc(top.id) + '</a></div>';
   }
 
-  var queueRows = m.queue.map(function (q) {
-    return '<tr data-state="' + CG.esc(q.state) + '" data-risk="' + CG.esc(q.risk) + '" data-team="' + CG.esc(q.team) + '">' +
-      '<td>' + CG.caseLink(q.id) + '</td><td class="mono text-xs">' + CG.esc(q.request_type) + '</td><td>' + CG.stateChip(q.state) + '</td><td>' + CG.riskChip(q.risk) +
-      '</td><td>' + CG.bandChip(q.band, q.score) + '</td><td class="mono text-xs">' + CG.esc(q.team || '') + '</td><td class="mono text-xs whitespace-nowrap">' + CG.esc(CG.age(q.age_hours)) +
-      '</td><td>' + CG.reasonChips(q.reason_codes) + '</td><td><a class="btn btn-sm" href="case.html?case=' + encodeURIComponent(q.id) + '">Open</a></td></tr>';
+  function kpi(label, n, cap) { return '<div class="kpi"><div class="label">' + CG.esc(label) + '</div><div class="num">' + CG.esc(n) + '</div><div class="cap">' + CG.esc(cap) + '</div></div>'; }
+  var kpis = '<div class="grid g4" style="margin-bottom:16px">' + kpi('Waiting for review', waiting, 'a person must decide') + kpi('Needs info', c.needs_info, 'waiting for the requester') +
+    kpi('High or critical risk', openHigh, 'open cases') + kpi('Answered automatically', c.auto_answered, 'no person needed') + '</div>';
+
+  // ---- trust ladder
+  var trust = '<div class="card"><div class="card-title"><h2>Trust ladder</h2></div><p class="small muted" style="margin-bottom:6px">Level 1 after ' + m.trust_thresholds.l1_streak + ' agreements in a row.</p>' +
+    m.trust.map(function (t) {
+      var dot = t.level === 2 ? 'green' : t.level === 1 ? 'amber' : 'grey';
+      return '<div class="dotrow"><span class="dot ' + dot + '"></span><span class="name" title="' + CG.esc(t.request_type) + '">' + CG.esc(CG.what(t.request_type)) + '</span><span class="stat">L' + t.level + ' · ' + t.consecutive_agreements + '/' + m.trust_thresholds.l1_streak +
+        ' · ' + (t.agreement_pct === null ? 'no reviews' : t.agreement_pct + '%') + '</span></div>';
+    }).join('') + '</div>';
+
+  // ---- my queue (max 8)
+  var rows = queue.slice(0, 8).map(function (q) {
+    return '<tr class="click" data-id="' + CG.esc(q.id) + '"><td>' + CG.caseLink(q.id) + '</td><td>' + CG.esc(CG.what(q.request_type)) + '</td><td>' + CG.stateTag(q.state) + '</td><td>' + CG.riskTag(q.risk) +
+      '</td><td class="small">' + CG.esc(CG.team(q.team)) + '</td><td class="nowrap small">' + CG.esc(CG.age(q.age_hours)) + '</td></tr>';
   }).join('');
+  var queueCard = '<div class="card"><div class="card-title"><h2>My queue</h2>' + (queue.length > 8 ? '<a class="small" href="case.html">See all ' + queue.length + '</a>' : '<a class="small" href="case.html">All cases</a>') + '</div>' +
+    (queue.length ? '<div class="tablewrap"><table><thead><tr><th>Case</th><th>What</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
+      CG.empty('Nothing is waiting. Submit a request from New request to see it flow through.')) + '</div>';
 
-  var states = Array.from(new Set(m.queue.map(function (q) { return q.state; })));
-  var teams = Array.from(new Set(m.queue.map(function (q) { return q.team; }).filter(Boolean)));
-  var sel = function (id, label, opts) {
-    return '<label class="text-body-sm text-slate-600">' + label + ' <select id="' + id + '" class="border border-slate-200 rounded-lg text-sm"><option value="">All</option>' +
-      opts.map(function (o) { return '<option>' + CG.esc(o) + '</option>'; }).join('') + '</select></label>';
-  };
-
-  var trustRows = m.trust.map(function (t) {
-    return '<tr><td class="mono text-xs">' + CG.esc(t.request_type) + '</td><td>' + CG.chip(t.level + ' ' + t.label, t.level === 2 ? 'chip-green' : t.level === 1 ? 'chip-blue' : 'chip-slate') +
-      '</td><td class="mono text-xs">' + t.consecutive_agreements + ' / ' + m.trust_thresholds.l1_streak + '</td><td class="mono text-xs">' +
-      (t.agreement_pct === null ? '-' : t.agreement_pct + '%') + ' (' + t.total_reviews + ' reviews)</td></tr>';
-  }).join('');
-
-  var gapRows = m.gap_radar.map(function (g) {
-    var hot = g.reason_code === 'POLICY_GAP' && g.count >= 3;
-    return '<tr class="' + (hot ? 'bg-amber-50' : '') + '"><td class="mono text-xs">' + CG.esc(g.request_type) + '</td><td>' + CG.chip(g.reason_code, 'chip-slate') +
-      '</td><td>' + CG.esc(g.topic || '') + '</td><td class="mono">' + g.count + '</td><td class="mono">' + g.avg_hours_in_queue + ' h</td><td class="mono">' + g.est_hours_saved + ' h</td></tr>';
-  }).join('');
-
-  var maxHrs = Math.max.apply(null, [1].concat(m.queue_aging.map(function (a) { return a.max_hours; })));
-  var agingRows = m.queue_aging.map(function (a) {
-    return '<tr><td>' + CG.stateChip(a.state) + '</td><td class="mono text-xs">' + CG.esc(a.team) + '</td><td class="mono">' + a.count + '</td><td class="mono">' + a.avg_hours +
-      ' h</td><td style="width:35%"><div style="height:8px;border-radius:9999px;background:#e2e8f0"><div style="height:8px;border-radius:9999px;background:#0f172a;width:' +
-      Math.max(2, Math.round(100 * a.max_hours / maxHrs)) + '%"></div></div><span class="mono text-xs">max ' + a.max_hours + ' h</span></td></tr>';
-  }).join('');
-
-  var cs = m.cost_split;
-  var costHtml = cs.requests === 0 ? CG.empty('No pipeline requests yet.') :
-    '<div class="seg-bar"><div class="seg" style="flex:' + Math.max(cs.no_llm_pct, 0.5) + ';background:#94a3b8">no LLM ' + cs.no_llm_pct + '%</div><div class="seg" style="flex:' +
-    Math.max(cs.light_only_pct, 0.5) + ';background:#0d9488">light ' + cs.light_only_pct + '%</div><div class="seg" style="flex:' + Math.max(cs.light_and_strong_pct, 0.5) +
-    ';background:#4f46e5">light + strong ' + cs.light_and_strong_pct + '%</div></div><p class="text-body-sm text-slate-500 mt-2">' + cs.requests + ' pipeline requests visible to you (seeded history excluded).</p>';
-
-  function pct(v) { return v.value === null ? 'n/a' : v.value.toFixed(0) + '%'; }
-  function scoreTiles(card, label) {
-    if (!card) return '';
-    var mm = card.metrics;
-    var rows = [['Type accuracy', mm.request_type_accuracy], ['Routing first-time-right', mm.routing_first_time_right], ['Missing-field recall', mm.missing_field_recall],
-      ['Citation validity', mm.citation_validity], ['Safety pass', mm.safety_pass_rate], ['Correct abstention', mm.correct_abstention_rate]];
-    return '<h3 class="font-headline-sm text-headline-sm mt-3 mb-2">' + CG.esc(label) + ' <span class="text-body-sm text-slate-500">' + CG.esc(card.rows + ' rows · ' + card.llm_provider + ' · ' + card.file) + '</span></h3>' +
-      '<div class="grid grid-cols-2 md:grid-cols-6 gap-3">' + rows.map(function (x) {
-        return '<div class="tile"><div class="eyebrow">' + CG.esc(x[0]) + '</div><div class="num">' + pct(x[1]) + '</div><div class="text-body-sm text-slate-500">' + x[1].num + '/' + x[1].den + '</div></div>';
-      }).join('') + '</div>';
+  // ---- needs attention
+  function attention(q) {
+    var hasC = q.reason_codes.indexOf('POLICY_CONFLICT') >= 0, gap = q.reason_codes.indexOf('POLICY_GAP') >= 0;
+    var tag = hasC ? ['Conflict', 'red'] : q.risk === 'critical' ? ['Critical', 'red'] : q.risk === 'high' ? ['High', 'red'] : gap ? ['Gap', 'amber'] : q.state === 'needs_info' ? ['Needs info', 'amber'] : ['Review', 'blue'];
+    var why = q.reason_codes.length ? q.reason_codes.map(CG.reasonLabel).join(', ') : CG.human(q.state);
+    return '<a class="att ' + tag[1] + '" href="case.html?case=' + encodeURIComponent(q.id) + '"><div class="top">' + CG.tag(tag[0], tag[1]) + '<span class="small faint">' + CG.esc(CG.age(q.age_hours)) + '</span></div>' +
+      '<div class="small"><b>' + CG.esc(q.id) + '</b> · ' + CG.esc(CG.what(q.request_type)) + '. ' + CG.esc(why) + '.</div></a>';
   }
-  var heldBlocks = '';
+  var sev = function (q) { return (q.reason_codes.indexOf('POLICY_CONFLICT') >= 0 ? 10 : 0) + (RANK[q.risk] || 0) * 2 + (q.reason_codes.indexOf('POLICY_GAP') >= 0 ? 1 : 0); };
+  var att = queue.slice().sort(function (a, b) { return sev(b) - sev(a); }).slice(0, 4);
+  var attCard = '<div class="card"><div class="card-title"><h2>Needs attention</h2></div>' + (att.length ? att.map(attention).join('') : CG.empty('Nothing needs attention.')) + '</div>';
+
+  // ---- collapsed: evaluation and gap radar
+  function pct(v) { return v && v.value !== null && v.value !== undefined ? Math.round(v.value) + '%' : 'n/a'; }
+  function evalCard(label, blind, adj, meta) {
+    function stat(name, k) {
+      return '<div><div class="label">' + name + '</div><div class="bigstat">' + pct(blind[k]) + '</div>' +
+        (adj ? '<div class="small muted">adjudicated ' + pct(adj[k]) + '</div>' : '<div class="small muted">&nbsp;</div>') + '</div>';
+    }
+    return '<div class="card" style="margin-top:12px"><div class="card-title"><h3>' + CG.esc(label) + '</h3><span class="small muted">' + CG.esc(meta) + '</span></div><div class="cmpgrid">' +
+      stat('Request type', 'request_type_accuracy') + stat('Routing', 'routing_first_time_right') + stat('Safety', 'safety_pass_rate') + '</div></div>';
+  }
+  var evalHtml = sc.main ? evalCard('Main set (regression gate)', sc.main.metrics, null, sc.main.rows + ' rows · ' + sc.main.llm_provider) : CG.empty('No scorecard yet. Run python -m caregrid.cli eval.');
   ['mock', 'env'].forEach(function (k) {
-    var card = sc.heldout[k];
-    if (!card) return;
-    heldBlocks += scoreTiles({ metrics: card.metrics, rows: card.rows, llm_provider: card.llm_provider, file: card.file }, 'Held-out, blind (as written) - ' + k);
-    if (card.adjudicated) heldBlocks += scoreTiles({ metrics: card.adjudicated.metrics, rows: card.rows, llm_provider: card.llm_provider, file: card.adjudicated.file }, 'Held-out, adjudicated - ' + k);
+    var h = sc.heldout[k];
+    if (h) evalHtml += evalCard('Held-out, ' + (k === 'env' ? h.llm_provider : 'mock') + ' (blind as written)', h.metrics, h.adjudicated && h.adjudicated.metrics, h.rows + ' rows');
   });
+  var gap = m.gap_radar.length ? '<div class="tablewrap"><table><thead><tr><th>Request type</th><th>Count</th><th>Est. hours saved</th></tr></thead><tbody>' + m.gap_radar.map(function (g) {
+    return '<tr><td>' + CG.esc(CG.what(g.request_type)) + ' <span class="small muted">' + CG.esc(g.topic || '') + '</span></td><td>' + g.count + '</td><td>' + g.est_hours_saved + ' h</td></tr>';
+  }).join('') + '</tbody></table></div>' : CG.empty('No recurring knowledge gaps.');
 
-  el.innerHTML =
-    '<div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><div class="eyebrow">Overview</div><h1 class="font-headline-xl text-headline-xl">Operational Intelligence Dashboard</h1>' +
-    '<p class="text-body-md text-slate-600">AI prepares the decision. Humans own the decision. Workflows execute the approved action.</p></div>' +
-    '<a class="btn btn-primary" href="intake.html"><span class="material-symbols-outlined text-base">add_circle</span>New request</a></div>' +
-    '<div class="card mb-4 flex items-center gap-2 text-body-sm"><span class="material-symbols-outlined text-slate-500">verified_user</span>Viewing as <b>' + CG.esc(me.name) + '</b> (' +
-    CG.esc(me.role + (me.team ? ' · ' + me.team : '')) + '). ' + m.visible_cases + ' case(s) are visible to your role.</div>' +
-    '<div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">' +
-    tile('Open', c.open, c.total + ' cases in total', 'inbox') + tile('Needs info', c.needs_info, 'waiting for the requester', 'pending_actions') +
-    tile('In review', c.awaiting_review, 'pending approval', 'rule') + tile('High / critical', openHigh, 'open cases', 'crisis_alert') +
-    tile('Escalated', c.escalated, 'to a senior', 'flag') + tile('Auto-answered', c.auto_answered, 'with audit', 'smart_toy') + '</div>' +
-    '<section class="card mb-4"><div class="flex flex-wrap items-center justify-between gap-2 mb-3"><h2 class="font-headline-md text-headline-md">My queue <span class="text-body-sm text-slate-500">(' + m.queue.length +
-    ')</span></h2><div class="flex gap-3">' + sel('f-state', 'State', states) + sel('f-risk', 'Risk', ['low', 'medium', 'high', 'critical']) + sel('f-team', 'Team', teams) + '</div></div>' +
-    (m.queue.length ? '<div class="overflow-x-auto"><table class="data"><thead><tr><th>Case</th><th>Type</th><th>State</th><th>Risk</th><th>Confidence</th><th>Team</th><th>Age</th><th>Reasons</th><th></th></tr></thead><tbody id="queue-body">' +
-      queueRows + '</tbody></table></div>' : CG.empty('Nothing is waiting for you.')) + '</section>' +
-    '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4"><section class="card"><h2 class="font-headline-md text-headline-md mb-1">Trust ladder</h2><p class="text-body-sm text-slate-500 mb-3">Level 1 after ' +
-    m.trust_thresholds.l1_streak + ' consecutive human agreements.</p><div class="overflow-x-auto"><table class="data"><thead><tr><th>Request type</th><th>Level</th><th>Streak</th><th>Agreement</th></tr></thead><tbody>' +
-    trustRows + '</tbody></table></div></section>' +
-    '<section class="card"><h2 class="font-headline-md text-headline-md mb-1">Knowledge gap radar</h2><p class="text-body-sm text-slate-500 mb-3">Recurring escalations that point at a missing or conflicting article.</p>' +
-    (m.gap_radar.length ? '<div class="overflow-x-auto"><table class="data"><thead><tr><th>Type</th><th>Reason</th><th>Topic</th><th>Count</th><th>Avg in queue</th><th>Est. saved</th></tr></thead><tbody>' + gapRows + '</tbody></table></div>' : CG.empty('No recurring gaps.')) +
-    '</section></div>' +
-    '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4"><section class="card"><h2 class="font-headline-md text-headline-md mb-3">Queue ageing</h2>' +
-    (m.queue_aging.length ? '<table class="data"><thead><tr><th>State</th><th>Team</th><th>Cases</th><th>Avg</th><th>Oldest</th></tr></thead><tbody>' + agingRows + '</tbody></table>' : CG.empty('Empty queue.')) + '</section>' +
-    '<section class="card"><h2 class="font-headline-md text-headline-md mb-3">Cost split</h2>' + costHtml + '</section></div>' +
-    '<section class="card"><h2 class="font-headline-md text-headline-md mb-1">Evaluation scorecard</h2><p class="text-body-sm text-slate-500">Regression gate on the mock; held-out rows are the real test.</p>' +
-    (sc.main ? scoreTiles(sc.main, 'Main set') : CG.empty('No scorecard yet: run python -m caregrid.cli eval.')) + heldBlocks + '</section>';
+  // ---- pipeline chips with real event counts
+  var counts = {};
+  audit.events.forEach(function (e) { counts[e.event] = (counts[e.event] || 0) + 1; });
+  var lit = CG.STEPS.map(function (s) { return s[1]; }).filter(function (k) { return counts[k] > 0; });
 
-  function applyFilters() {
-    var f = { state: document.getElementById('f-state'), risk: document.getElementById('f-risk'), team: document.getElementById('f-team') };
-    if (!f.state) return;
-    CG.$$('#queue-body tr').forEach(function (tr) {
-      var ok = (!f.state.value || tr.dataset.state === f.state.value) && (!f.risk.value || tr.dataset.risk === f.risk.value) && (!f.team.value || tr.dataset.team === f.team.value);
-      tr.style.display = ok ? '' : 'none';
-    });
-  }
-  ['f-state', 'f-risk', 'f-team'].forEach(function (id) { var e = document.getElementById(id); if (e) e.onchange = applyFilters; });
+  el.innerHTML = '<div class="page-head"><h1>Dashboard</h1><p class="muted">What needs you right now, ' + CG.esc(me.name) + '? You can see ' + m.visible_cases + ' case' + (m.visible_cases === 1 ? '' : 's') + '.</p></div>' +
+    banner + kpis + '<div class="grid g-dash">' + trust + queueCard + attCard + '</div>' +
+    '<details class="fold"><summary>Evaluation</summary><div class="fold-body"><p class="small muted">Blind numbers are scored as written; adjudicated numbers use the reviewed expectations.</p>' + evalHtml + '</div></details>' +
+    '<details class="fold"><summary>Knowledge gap radar</summary><div class="fold-body">' + gap + '</div></details>' +
+    '<div class="card" style="margin-top:16px"><div class="card-title"><h2>Pipeline</h2><span class="small muted">events recorded for the cases you can see</span></div>' + CG.pipeline(lit, -1, counts) + '</div>';
+
+  CG.$$('tr.click', el).forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.tagName !== 'A') window.location.href = 'case.html?case=' + encodeURIComponent(tr.dataset.id); }; });
 })();

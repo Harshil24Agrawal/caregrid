@@ -1,35 +1,46 @@
 # web/ - the CareGrid web UI
 
-Static pages (Tailwind, vanilla JS) served by the API process and wired to the REAL backend. No data and no business logic in the browser:
-`api.js` only calls `/api/*`; `shell.js` draws the sidebar and small presentation helpers. The design comes from the teammate's HTML export
-(glass cards, tokens, sidebar); everything fake in it (see `docs/UI_AUDIT.md`) was removed.
+Static pages (own CSS in `styles.css`, vanilla JS) served by the API process and wired to the REAL backend. No data and no business logic in the
+browser: `api.js` only calls `/api/*`; `shell.js` draws the header and small presentation helpers. Nothing is loaded from the network (system
+fonts, no icon font, vis-network vendored in `web/vendor/`), so it works offline.
 
 ```bash
 python -m caregrid.cli reset      # clean demo state
 python -m caregrid.cli serve      # http://127.0.0.1:8000/   (API docs: /api/docs)
+python scripts/web_screenshots.py # full-page screenshots as Asha, Rahul and Meera -> docs/screenshots/
 ```
 
-Every page: user switcher (sidebar, "Acting as"), LLM provider indicator, Reset demo (with confirmation). The acting user is sent as the header
-`X-CareGrid-User` (demo authentication, NOT real login); the server enforces RBAC on every endpoint and runs every text field through
-`check_output(text, viewer)`.
+Design: navy header, white cards on light grey, one blue for actions. Colour carries meaning only: green = ok / approved / auto,
+amber = needs review / medium, red = critical / conflict / refused, grey = info / stale. Reason codes appear in plain words with the code
+in a tooltip ("Policies disagree" = POLICY_CONFLICT).
 
-Offline note: Tailwind (3.4.17) and vis-network are vendored in `web/vendor/`. Inter, JetBrains Mono and the Material Symbols icons load from
-Google Fonts; without a network the page still works with fallback fonts and icon names as text.
+Header on every page: provider pill, PHI masked count (personal-data types recorded in the audit log for the cases you can see), demo login
+switcher (the acting user is sent as the `X-CareGrid-User` header; NOT real authentication) and Reset demo (with confirmation).
+Nav: Dashboard · New request · Cases · Knowledge · Audit. The old `approval.html` and `comms.html` redirect (to the case's Decide panel and to
+Audit > Messages).
 
-## Click paths (users: Asha U1 ops, Vikram U2 ENROLL, Neha U3 manager, Rahul U4 senior, Meera U5 knowledge owner, Arjun U6 auditor, Kiran U7 IT)
+| Page | The one question it answers |
+|---|---|
+| Dashboard | What needs me right now? Attention banner, 4 KPIs, trust ladder, my queue, needs-attention cards; evaluation, gap radar and pipeline below. |
+| New request | What happens to my request? One result card with a headline per state. |
+| Cases | What is going on with this case? List, or one case: why a human, risk, confidence, sources, next step, Decide panel, assistant, evidence / graph / audit / messages tabs. |
+| Knowledge | What does the Second Brain say, and what is wrong with it? Pages with versions (compare), needs attention (lint), change requests (PRs). |
+| Audit | What happened, and who did it? Log with plain-word events; Messages tab with "simulated" tags. |
+
+## Click paths (users: Asha ops employee, Vikram Enrollment specialist, Neha ops manager, Rahul senior reviewer, Meera knowledge owner, Arjun auditor, Kiran IT specialist)
 
 | | Path |
 |---|---|
-| **S1** | Asha -> New Request -> chip "S1 policy question" -> Submit. Green "Answered automatically", cites KA-02, band HIGH, "Trust level 1 - audited". The box is cleared. |
-| **S2** | Asha -> chip "S2 missing info" -> Submit. ONE numbered message with 3 asks, purple chips of what was masked, team TEAM-ENROLL. As Vikram, Open case -> Recommendation tab: the notes include the stale P-88 / KA-12 v2 warning. |
-| **S3** | Asha -> chip "S3 conflict" -> Submit: "Sent for human review -> TEAM-IT" with POLICY_CONFLICT. Switch to Kiran -> Case -> Recommendation: red conflict KA-31 vs KA-32, "Band capped at Medium". |
-| **S4** | Asha -> chip "S4a clinical" (refused, TEAM-CLINICAL, no advice) and chip "S4b injection" (refused, ACCESS_DENIED + SENSITIVE, TEAM-COMPLIANCE). Audit Log (Arjun) shows `guard_blocked`. |
-| **S5** | Rahul -> Case -> CASE-1024 -> assistant chip "Why is this case flagged?" (cites [KA-40] [INV-1024]) -> Open approval -> tick Email + WhatsApp, enter a contact e-mail -> Submit decision: state path ... approved -> actioned -> notified, precedent id, trust change. Communications lists both (simulated). Switch to Asha -> Case CASE-1024: amount hidden, Evidence rows locked, the assistant answers "ACCESS RESTRICTED" to "What is the amount?", Approval is disabled with the reason. |
-| **S6** | Asha submits chip "S6 name change" (confidence 60 Medium). Vikram -> Approval -> Submit decision (precedent saved). Asha submits "Provider NPI 1098765437 legally changed name from Arun Pillai to Arun Menon, bank letter attached." -> 75 HIGH citing the new precedent. Dashboard -> Trust ladder shows the streak. |
-| **S7** | Asha submits the S3 chip. Kiran -> Approval -> tick "Propose a Knowledge PR", policy KA-32, tick "Retire this policy", add a note -> Submit ("Knowledge PR opened"). Meera -> Knowledge Hub -> Knowledge PRs -> read the change -> Approve -> Lint report: the KA-31/KA-32 CONTRADICTION is gone. Asha submits S3 again: no POLICY_CONFLICT. |
+| **S1** | Asha -> New request -> chip "S1 · Policy question" -> Submit: "Answered automatically", cites KA-02, confidence High. The box is cleared. |
+| **S2** | Asha -> chip "S2 · Missing details" -> Submit: "Need 3 more details" (numbered), masked chips, sources. |
+| **S3** | Asha -> chip "S3 · Policies disagree" -> Submit: "Sent to IT Service Desk for review". Switch to Kiran -> Open case: red "Policies disagree" (KA-31 vs KA-32), "Capped at Medium". |
+| **S4** | Asha -> type the insulin question: "Refused: medical question -> Clinical Review". Type the "Ignore previous instructions..." text: "Refused: access denied -> Compliance & Privacy". |
+| **S5** | Rahul -> Cases -> CASE-1024 -> assistant "Why is this case flagged?" (cites KA-40 and INV-1024) -> Decide: More options -> tick Email + WhatsApp, enter a contact e-mail -> Submit decision (state path, precedent, trust). Audit > Messages lists both (simulated). Switch to Asha -> same case: amount hidden, evidence locked, "What is the amount?" answers ACCESS RESTRICTED, Decide explains why she can't. |
+| **S6** | Asha submits the name-change request (confidence 60). Vikram -> case -> Decide -> Submit. Asha submits the second name change -> 75, citing the new precedent in Sources. Dashboard -> trust ladder shows the streak. |
+| **S7** | Asha submits S3. Kiran -> case -> Decide -> More options -> "Propose a change to a policy", KA-32, "Retire this policy" -> Submit. Meera -> Knowledge -> Change requests -> Approve. Needs attention is now clear; Asha submits S3 again: no "Policies disagree". |
 
 ## Tests
 
-`tests/test_api.py` (API, RBAC, no raw text stored, S1-S7), `tests/test_web_e2e.py` (the click paths above in real Chrome via Playwright; skipped
-when Playwright or Chrome is missing: `python -m pip install playwright`, it uses the installed Chrome), and the API smoke step of
+`tests/test_api.py` (API, RBAC, no raw text stored, S1-S7), `tests/test_web_e2e.py` (the click paths above in real Chrome via Playwright, plus
+"no request leaves 127.0.0.1"; skipped when Playwright or Chrome is missing: `python -m pip install playwright`), and the API smoke step of
 `python -m caregrid.cli check`.
