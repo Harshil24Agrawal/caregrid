@@ -111,7 +111,7 @@ pre.diff div { padding: 0 10px; white-space: pre-wrap; word-break: break-word; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; } .legend .lg { display: inline-flex; align-items: center; gap: 5px; } .legend .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: #1d5fd1; }
 .sw.s0 { background: #1d5fd1; } .sw.s1 { background: #4b85e0; } .sw.s2 { background: #7aa7f0; } .sw.s3 { background: #a6c4f5; } .sw.s4 { background: #c8dafa; }
 .nw td, td.nw { white-space: nowrap; } td.ellip { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trow { padding: 9px 0; border-top: 1px solid var(--line); } .trow:first-of-type { border-top: 0; } .trow .l1 { display: flex; align-items: center; gap: 8px; white-space: nowrap; } .trow .l1 .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.trow { padding: 9px 0; border-top: 1px solid var(--line); } .trow:first-of-type { border-top: 0; } .trow .l1 { display: flex; align-items: center; gap: 8px; white-space: nowrap; } .trow .l1 .name { font-weight: 600; flex: 1; min-width: 0; }
 .trow .bar { height: 5px; border-radius: 3px; background: var(--grey-bg); margin: 6px 0 3px; overflow: hidden; } .trow .bar i { display: block; height: 100%; background: var(--blue); } .trow .bar.done i { background: #2fbf7d; }
 .trow .l3 { font-size: 12px; color: var(--muted); white-space: nowrap; display: flex; justify-content: space-between; gap: 8px; }
 

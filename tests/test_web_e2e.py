@@ -218,7 +218,7 @@ def test_s6_compounding_and_trust(web):
     web.go("/case.html?case=" + case_id_of(p), "#decide")
     assert prec in text(web.page)                                  # the new precedent is cited as a source
     web.as_user("U3")
-    assert "Provider name change" in text(web.go("/index.html", ".kpi"))
+    assert "Name change" in text(web.go("/index.html", ".kpi"))
 
 
 def test_s7_pr_loop_in_the_browser(web):
@@ -325,3 +325,24 @@ def test_needs_attention_shows_knowledge_problems_not_queue_items(web):
     assert "oldest waiting" in text(p).lower()
     for n in p.query_selector_all(".att"):
         assert n.get_attribute("href")
+
+
+def test_graph_tab_never_errors_for_roles_that_can_open_the_case(web):
+    for uid, full in (("U1", False), ("U5", False), ("U6", False), ("U3", True), ("U4", True)):
+        web.as_user(uid)
+        p = web.go("/case.html?case=CASE-1024", "#tab-body")
+        p.click(".tab[data-t=graph]")
+        p.wait_for_selector("#graph", timeout=T)
+        body = text(p, "#tab-body")
+        assert "ACCESS RESTRICTED" not in body and "not available" not in body, uid
+        assert ("collapsed into one restricted node" in body) == (not full), uid
+
+
+def test_trust_ladder_uses_short_names_without_ellipsis(web):
+    web.as_user("U4")
+    p = web.go("/index.html", ".trow")
+    names = [n.inner_text() for n in p.query_selector_all(".trow .name")]
+    assert names == ["Policy question", "Address change", "Name change", "Portal reset", "Prior auth status", "DME request", "Claim status", "Complaint"]
+    assert all("\u2026" not in n and "..." not in n for n in names)
+    assert p.eval_on_selector_all(".trow .name", "els => els.every(e => e.scrollWidth <= e.clientWidth + 1)")      # nothing is cut off
+    assert p.get_attribute(".trow .name >> nth=2", "title") == "Provider name change"

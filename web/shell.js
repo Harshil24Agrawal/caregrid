@@ -74,7 +74,7 @@
     return p === 'openai_compat' ? 'OpenAI-compatible' : String(p);
   };
   var SHORT = { general_policy_question: 'Policy question', provider_address_change: 'Address change', provider_name_change: 'Name change', portal_access_reset: 'Portal reset',
-    prior_auth_status: 'Prior auth', dme_equipment_request: 'DME request', claim_status_inquiry: 'Claim status', complaint_grievance: 'Complaint', unknown: 'Unclassified' };
+    prior_auth_status: 'Prior auth status', dme_equipment_request: 'DME request', claim_status_inquiry: 'Claim status', complaint_grievance: 'Complaint', unknown: 'Unclassified' };
   CG.shortWhat = function (type) { return SHORT[type] || CG.what(type); };
   // map internal notes to plain sentences; anything unknown is shown as written
   CG.plainNote = function (n) {

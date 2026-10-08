@@ -615,16 +615,14 @@ def test_raw_contacts_never_reach_the_database(env):
                        contact_email="enroll.desk@clinic.example", contact_phone="+91 98100 12345")
     sent = send_communications(case, d, env.store)
     stored = env.store.list_comms(case.id)
-    assert [c.recipient for c in stored] == ["[EMAIL]", "[PHONE]"] and all(c.recipient_hash and len(c.recipient_hash) == 12 for c in stored)
+    assert [c.recipient for c in stored] == ["[EMAIL]", "[PHONE]"]
     assert all("For queries: [EMAIL] · [PHONE]" in c.message for c in stored)
-    assert stored[0].recipient_hash != stored[1].recipient_hash and "enroll" not in stored[0].recipient_hash
     dump = " ".join(c.model_dump_json() for c in stored) + " ".join(e.model_dump_json() for e in env.audit(case.id))
     for raw in ("enroll.desk", "98100", "12345", "clinic.example"):
         assert raw not in dump, raw
     assert leak_scan_store(env.store, env.data) == [] and not env.audit(case.id, "comms_contacts_allowlisted")
     assert sent[0].id == stored[0].id
-    # the same recipient on the same channel is not sent twice for a case (dedup by the salted hash)
-    assert send_communications(case, d, env.store) == [] and len(env.store.list_comms(case.id)) == 2
+    assert "recipient_hash" not in " ".join(c.model_dump_json() for c in stored)                          # nothing contact-derived is stored
     # the safety net has no exception any more: anything that looks like PII is re-masked and audited (types only)
     rogue = Communication(id="COM-rogue", case_id=case.id, channel=Channel.EMAIL, recipient="enroll.desk@clinic.example", ts=datetime.now(),
                           message="call 9876543210 or mail jane.doe@clinic.example", status="simulated")
@@ -641,7 +639,7 @@ def test_missing_recipient_and_channel_rules(env):
                        channels=[Channel.EMAIL, Channel.WHATSAPP, Channel.EMAIL, Channel.PORTAL])
     comms = send_communications(case, d, env.store)
     assert [(c.channel.value, c.status) for c in comms] == [("email", "simulated"), ("whatsapp", "failed"), ("portal", "simulated")]
-    assert comms[2].recipient == case.requester.id and comms[1].recipient == "(none)" and comms[1].recipient_hash is None and comms[0].recipient == "[EMAIL]"
+    assert comms[2].recipient == case.requester.id and comms[1].recipient == "(none)" and comms[0].recipient == "[EMAIL]"
     sent = env.audit(case.id, "communication_sent")
     assert len(sent) == 3 and all("recipient" not in e.details for e in sent)
 
@@ -842,3 +840,26 @@ def test_reset_demo_is_repeatable_importable_and_reloads_a_cached_brain(world, t
     assert again["seeded"] == result["seeded"]
     assert cached.get_precedent(learned[0]) is None and len(cached.precedents()) == 40         # the cached brain forgot it
     assert len(SQLiteStore().list_cases()) == 21 and SQLiteStore().get_trust("provider_name_change").total_reviews == 0
+
+
+def test_the_same_recipient_is_sent_to_once_per_channel_within_one_send(env):
+    from caregrid.workflow.comms import normalise_recipient, split_contacts
+
+    assert normalise_recipient(Channel.WHATSAPP, "9876543210") == normalise_recipient(Channel.WHATSAPP, "+91 98765 43210") == "9876543210"
+    assert normalise_recipient(Channel.SMS, "09876543210") == normalise_recipient(Channel.SMS, "(+91) 98765-43210") == "9876543210"
+    assert normalise_recipient(Channel.EMAIL, "  Desk@Clinic.Example ") == "desk@clinic.example"
+    assert split_contacts("a@b.example; c@d.example ,") == ["a@b.example", "c@d.example"]
+    case = env.run(NAME_A)
+    d = ReviewDecision(case_id=case.id, reviewer=env.vikram, action=ReviewAction.APPROVE, channels=[Channel.WHATSAPP, Channel.EMAIL],
+                       contact_phone="9876543210; +91 98765 43210; 098765 43210", contact_email="Desk@Clinic.example, desk@clinic.example")
+    sent = send_communications(case, d, env.store)
+    assert [(c.channel.value, c.recipient) for c in sent] == [("whatsapp", "[PHONE]"), ("email", "[EMAIL]")]       # one message each, not three / two
+    other = ReviewDecision(case_id=case.id, reviewer=env.vikram, action=ReviewAction.APPROVE, channels=[Channel.WHATSAPP, Channel.SMS],
+                           contact_phone="9876543210; 9123456780")
+    assert [c.channel.value for c in send_communications(case, other, env.store)] == ["whatsapp", "whatsapp", "sms", "sms"]   # two people, two channels
+    stored = " ".join(c.model_dump_json() for c in env.store.list_comms(case.id)) + " ".join(e.model_dump_json() for e in env.audit(case.id))
+    for needle in ("9876543210", "98765", "9123456780", "desk@clinic", "Desk@Clinic", "hash"):
+        assert needle not in stored, needle
+    with pytest.raises(ValueError):
+        send_communications(case, ReviewDecision(case_id=case.id, reviewer=env.vikram, action=ReviewAction.APPROVE, channels=[Channel.EMAIL],
+                                                 contact_email="ok@clinic.example; not-an-email"), env.store)

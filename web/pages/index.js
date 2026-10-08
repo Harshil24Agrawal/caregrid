@@ -61,7 +61,7 @@
     else if (t.level === 1) { pct = Math.min(100, 100 * t.total_reviews / T.l2_reviews); cap = t.total_reviews + ' reviews (' + T.l2_reviews + ' for Level 2)'; }
     else { pct = 100; cap = 'Answers automatically, with audit'; }
     var agree = t.agreement_pct === null ? '' : t.agreement_pct + '% agree';
-    return '<div class="trow"><div class="l1"><span class="dot ' + dot + '"></span><span class="name" title="' + CG.esc(t.request_type) + '">' + CG.esc(CG.what(t.request_type)) + '</span><span class="small muted">Level ' + t.level + ' ' + CG.esc(t.label) + '</span></div>' +
+    return '<div class="trow"><div class="l1"><span class="dot ' + dot + '"></span><span class="name" title="' + CG.esc(CG.what(t.request_type)) + '">' + CG.esc(CG.shortWhat(t.request_type)) + '</span><span class="small muted">Level ' + t.level + ' ' + CG.esc(t.label) + '</span></div>' +
       '<div class="bar' + (pct >= 100 ? ' done' : '') + '"><i style="width:' + pct.toFixed(0) + '%"></i></div><div class="l3"><span>' + CG.esc(cap) + '</span><span>' + CG.esc(agree) + '</span></div></div>';
   }).join('') + '</div>';
 

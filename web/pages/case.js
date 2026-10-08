@@ -208,13 +208,14 @@
   function graphTab(box) {
     CG.loading(box, 'Building the graph…');
     CG_API.get('/api/cases/' + encodeURIComponent(c.id) + '/graph').then(function (g) {
-      var color = function (k) { return k === 'case' ? '#13294b' : (k === 'policy' || k === 'workflow') ? '#1d5fd1' : '#8794a7'; };
-      box.innerHTML = '<div id="graph" style="height:360px;border:1px solid var(--line);border-radius:10px;background:#fff"></div><div class="small muted" style="margin:8px 0">Navy: this case · Blue: policies and workflows · Grey: everything else · Red dashed: policies that disagree.</div>' +
+      var color = function (k) { return k === 'case' ? '#13294b' : (k === 'policy' || k === 'workflow') ? '#1d5fd1' : k === 'restricted' ? '#c4cdda' : '#8794a7'; };
+      var limited = g.nodes.some(function (n) { return n.kind === 'restricted'; });
+      box.innerHTML = '<div id="graph" style="height:360px;border:1px solid var(--line);border-radius:10px;background:#fff"></div><div class="small muted" style="margin:8px 0">Navy: this case · Blue: policies and workflows · Grey: everything else · Red dashed: policies that disagree.' + (limited ? ' Evidence, past cases and page statuses are collapsed into one restricted node for your role.' : '') + '</div>' +
         '<details><summary class="small" style="cursor:pointer">' + g.edges.length + ' relationships as a table</summary><table><tbody>' + g.edges.map(function (e) {
           return '<tr><td class="mono small">' + CG.esc(e.source) + '</td><td>' + CG.tag(CG.human(e.relation), e.relation === 'conflicts_with' ? 'red' : 'grey') + '</td><td class="mono small">' + CG.esc(e.target) + '</td></tr>'; }).join('') + '</tbody></table></details>';
       if (window.vis) {
         new vis.Network(document.getElementById('graph'), {
-          nodes: new vis.DataSet(g.nodes.map(function (n) { return { id: n.id, label: n.id + (n.version ? ' v' + n.version : ''), title: n.label, shape: 'box', margin: 8, color: { background: color(n.kind), border: '#fff' }, font: { color: '#fff', size: 12 } }; })),
+          nodes: new vis.DataSet(g.nodes.map(function (n) { return { id: n.id, label: n.id + (n.version ? ' v' + n.version : ''), title: n.label, shape: 'box', margin: 8, color: { background: color(n.kind), border: '#fff' }, font: { color: n.kind === 'restricted' ? '#1b2430' : '#fff', size: 12 }, shapeProperties: { borderDashes: n.kind === 'restricted' ? [4, 3] : false } }; })),
           edges: new vis.DataSet(g.edges.map(function (e) { return { from: e.source, to: e.target, label: CG.human(e.relation), arrows: 'to', font: { size: 9, align: 'middle' }, color: e.relation === 'conflicts_with' ? '#b42318' : '#9aa6b6', dashes: e.relation === 'conflicts_with' }; }))
         }, { physics: { stabilization: true }, interaction: { hover: true } });
       }

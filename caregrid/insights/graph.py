@@ -15,7 +15,7 @@ from caregrid.models import PageType, User
 from caregrid.rbac import can_view
 from caregrid.store import Store
 
-Kind = Literal["case", "requester", "policy", "workflow", "precedent", "team", "profile", "invoice", "log", "jira", "runbook", "comm"]
+Kind = Literal["case", "requester", "policy", "workflow", "precedent", "team", "profile", "invoice", "log", "jira", "runbook", "comm", "restricted"]
 _ID = re.compile(r"\b(?:KA|WF|FIELD|REG)-[A-Za-z0-9]+\b")
 _EVIDENCE = (("profile", "profile", "profile"), ("invoice", "invoice", "billing"), ("logs", "log", "logs"),
              ("jira", "jira", "logs"), ("runbook", "runbook", "logs"))      # (case.related key, node kind, section the viewer needs)
@@ -54,6 +54,7 @@ def case_graph(case_id: str, viewer: User, store: Store, brain: Brain) -> CaseGr
     if not can_view(viewer, case, "summary"):
         raise PermissionError(f"{viewer.role.value} may not view {case_id}")
     g = CaseGraph(case_id=case.id)
+    summary_only = not can_view(viewer, case, "full")           # a summary viewer gets the shape of the case, not its evidence or page statuses
 
     def add(node: GraphNode) -> None:
         if g.node(node.id) is None:
@@ -72,6 +73,12 @@ def case_graph(case_id: str, viewer: User, store: Store, brain: Brain) -> CaseGr
         link(case.id, case.assigned_team, "routed_to")
 
     for c in (case.proposal.citations if case.proposal else []):
+        if summary_only:
+            current = brain.get(c.page_id)
+            if c.page_type in (PageType.POLICY, PageType.WORKFLOW) and current is not None and current.version == c.version:      # approved and current only
+                add(GraphNode(id=c.page_id, kind="policy" if c.page_type == PageType.POLICY else "workflow", label=c.title or c.page_id, version=c.version))
+                link(case.id, c.page_id, "cites")
+            continue
         if c.page_type == PageType.PRECEDENT:
             prec = brain.get_precedent(c.page_id)
             add(GraphNode(id=c.page_id, kind="precedent", label=c.title or c.page_id, status=prec.status.value if prec else None))
@@ -87,6 +94,10 @@ def case_graph(case_id: str, viewer: User, store: Store, brain: Brain) -> CaseGr
             if kind:
                 add(GraphNode(id=c.page_id, kind=kind, label=c.title or c.page_id, status="approved", version=c.version))
                 link(case.id, c.page_id, "cites")
+    if summary_only:
+        add(GraphNode(id="restricted", kind="restricted", label="Evidence, past cases and page statuses are restricted for your role"))
+        link(case.id, "restricted", "restricted")
+        return g
     for node in list(g.nodes):                                   # page-to-page links, only between nodes already on the graph
         page = brain.get(node.id) if node.kind in ("policy", "workflow") else None
         for other in (page.links if page else []):

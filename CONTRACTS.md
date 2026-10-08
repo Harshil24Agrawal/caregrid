@@ -240,7 +240,6 @@ class KnowledgePR(BaseModel):
 class Communication(BaseModel):
     id: str; case_id: str; channel: Channel; recipient: str
     message: str; status: Literal["simulated", "sent", "failed"]; ts: datetime
-    recipient_hash: str | None = None        # short salted hash of the raw recipient (dedup only); raw contacts are NEVER stored
 
 class LintFinding(BaseModel):
     severity: Literal["error", "warning", "info"]
@@ -465,9 +464,10 @@ audit event `reset_denied`. **Demo auth:** the header `X-CareGrid-User` must be 
 * **Trust.** `record_review` takes optional `brain` (for the `never_auto` ceiling and workflow risk), `case_id` and `actor` (for the `trust_updated` audit event).
 * **Precedent facts** are exactly `derive_case_facts(workflow, classification, topic)` (section 10); `policy_id/version` = the top cited POLICY citation at its
   current version. The Brain is updated in memory and on disk.
-* **Communication** stores NO raw contact: `recipient` is the masked placeholder (`[EMAIL]` / `[PHONE]`, or the requester id for the portal), the message says
-  "For queries: [EMAIL] · [PHONE]", and `recipient_hash` is a short salted hash (`COMMS_HASH_SALT`) used only to avoid sending the same recipient twice. Raw values
-  exist only in memory while the (simulated) message is sent. `Store.save_comm` has no allowlist exception; `leak_scan_store` scans comms like everything else.
+* **Communication** stores NO raw contact and nothing derived from one (no hash): `recipient` is the masked placeholder (`[EMAIL]` / `[PHONE]`, or the requester id for
+  the portal) and the message says "For queries: [EMAIL] · [PHONE]". Raw values exist only in memory while the (simulated) message is sent. A decision may list several
+  recipients per field (`;` or `,`, at most 5); within ONE send a recipient is messaged once per channel, compared on normalised values (e-mail trimmed and lower-cased;
+  phone = digits only, leading 91 / 0 removed). `Store.save_comm` has no allowlist exception; `leak_scan_store` scans comms like everything else.
   `Store` gained `list_trust()`.
 * **Amounts** in a requester message come only from `billing.csv` (invoices in `case.related["invoice"]`); any rupee amount in model/reviewer text is replaced by
   `[amount omitted]`.
@@ -480,3 +480,8 @@ audit event `reset_denied`. **Demo auth:** the header `X-CareGrid-User` must be 
 
 ## 15. Case graph
 `insights/graph.py`: `case_graph(case_id, viewer, store, brain) -> CaseGraph{case_id, nodes: [GraphNode{id, kind, label, status, version}], edges: [GraphEdge{source, target, relation}]}`. Kinds: case, requester, policy, workflow, precedent, team, profile, invoice, log, jira, runbook, comm. Relations: requested_by, routed_to, cites, based_on (precedent -> its policy), links_to, conflicts_with, evidence, notified. `PermissionError` if the viewer cannot see the case summary; evidence nodes appear only for sections the viewer may see (profile / billing / logs). Labels are ids and page titles only (no amounts, names or record text).
+
+**Case graph (HTTP API / `insights/graph.py`).** Anyone who can see the case summary gets a graph. A summary-only viewer gets the shape of the case (case, requester, team, cited
+workflow and APPROVED current policies, no page statuses) plus one `restricted` node that stands for evidence, past cases and statuses; the full view keeps the full graph.
+**Requests:** after NFKC and removing control / format / separator characters the text must contain at least one letter or digit, otherwise 422 "Please describe the request."
+

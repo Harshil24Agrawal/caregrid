@@ -17,6 +17,7 @@ import json
 import os
 import re
 import threading
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -348,8 +349,11 @@ class RequestIn(BaseModel):
     def _strip(cls, v):
         if isinstance(v, str):
             v = v.strip()
-            if not v:
-                raise ValueError("Please describe the request.")      # never echo the (empty) input
+            # NFKC, then drop control / format / separator characters (zero-width space and joiner, BOM, word joiner, no-break and ideographic
+            # spaces ...): what is left must contain at least one letter or digit. Never echo the input.
+            visible = "".join(ch for ch in unicodedata.normalize("NFKC", v) if unicodedata.category(ch) not in ("Cc", "Cf", "Zs", "Zl", "Zp"))
+            if not any(ch.isalnum() for ch in visible):
+                raise ValueError("Please describe the request.")
         return v
 
 
@@ -377,9 +381,7 @@ def api_case(case_id: str, user: User = Depends(actor)):
 @app.get("/api/cases/{case_id}/graph")
 def api_case_graph(case_id: str, user: User = Depends(actor)):
     store, brain = get_store(), get_brain()
-    case = must_get_case(case_id, user, store)
-    if not can_view(user, case, "full"):                    # the graph shows page statuses (stale / expired): not for summary-only roles
-        raise PermissionError(case_id)
+    must_get_case(case_id, user, store)                      # anyone who can open the case gets a graph; case_graph() returns the summary-only shape to them
     return scrub(case_graph(case_id, user, store, brain).model_dump(), user)
 
 

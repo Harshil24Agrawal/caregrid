@@ -295,7 +295,7 @@ def test_no_raw_contact_anywhere_in_sqlite_after_s5(client):
     con.close()
     for raw in ("dme.desk", "clinic-supplies", "98100", "12345"):
         assert raw not in dump, raw
-    assert "[EMAIL]" in dump and "recipient_hash" in dump
+    assert "[EMAIL]" in dump and "recipient_hash" not in dump and "salt" not in dump.lower()
 
 
 def test_knowledge_visibility_by_role(client):
@@ -320,7 +320,8 @@ def test_knowledge_visibility_by_role(client):
     stale = [p for p in client.get("/api/pages", headers=H["meera"]).json() if p["status"] == "stale"]
     assert stale and not any(p["status"] == "stale" for p in client.get("/api/pages", headers=H["asha"]).json())
     assert client.get(f"/api/pages/{stale[0]['id']}", headers=H["asha"]).status_code == 404
-    assert client.get("/api/cases/CASE-1024/graph", headers=H["asha"]).status_code == 403
+    g = client.get("/api/cases/CASE-1024/graph", headers=H["asha"])                 # a summary viewer still gets a graph (summary-only shape)
+    assert g.status_code == 200 and {n["kind"] for n in g.json()["nodes"]} <= {"case", "requester", "team", "workflow", "policy", "restricted"}
 
 
 def test_user_header_is_exact_and_not_duplicated(client):
@@ -374,3 +375,34 @@ def test_polish_data_for_the_ui(client):
     assert set(case["missing"]["missing"]) == {"effective_date", "supporting_document"} and case["missing"]["invalid"] == ["npi"]
     assert case["reviewer"]["restricted"] is True
     assert "9 digits" not in str(case["missing"])
+
+
+def test_graph_is_summary_only_for_restricted_viewers_and_full_for_the_rest(client):
+    def graph(who):
+        return client.get("/api/cases/CASE-1024/graph", headers=H[who])
+    for who in ("asha", "meera", "arjun"):                                          # can open the case, summary level
+        r = graph(who)
+        assert r.status_code == 200, who
+        nodes = r.json()["nodes"]
+        kinds = {n["kind"] for n in nodes}
+        assert {"case", "requester", "team", "restricted"} <= kinds and kinds <= {"case", "requester", "team", "workflow", "policy", "restricted"}, (who, kinds)
+        assert all(n["status"] is None for n in nodes) and not any(e["relation"] in ("based_on", "evidence", "conflicts_with", "notified") for e in r.json()["edges"])
+        assert {n["id"] for n in nodes} >= {"KA-40"} and not any(n["id"].startswith(("P-", "INV-", "L-", "J-")) for n in nodes)
+        assert not any(a in r.text for a in AMOUNTS)
+    for who in ("rahul", "neha"):                                                    # full view keeps the full graph
+        kinds = {n["kind"] for n in graph(who).json()["nodes"]}
+        assert {"precedent", "invoice", "log", "jira"} <= kinds and "restricted" not in kinds, who
+    for who in ("vikram", "kiran"):                                                  # cannot open the case at all
+        assert graph(who).status_code == 403, who
+
+
+def test_requests_without_visible_content_are_rejected(client):
+    before = len(client.get("/api/cases", headers=H["asha"]).json())
+    for text in ("\u200b", "\u200b\u200c\u200d", "\u2060", "\ufeff", "\u00a0", "\u3000", "\u200b \ufeff \u3000 \u2060", "\u200e\u200f", "!!! ??? ...", "\u3000\u3000.", "\x07"):
+        r = client.post("/api/requests", headers=H["asha"], json={"text": text})
+        assert r.status_code == 422 and "Please describe the request." in r.text, repr(text)
+        assert text not in r.text.replace("\\u", "")
+    assert len(client.get("/api/cases", headers=H["asha"]).json()) == before
+    ok = client.post("/api/requests", headers=H["asha"], json={"text": "\u200b" + S1 + "\ufeff"})
+    assert ok.status_code == 200
+    assert client.post("/api/requests", headers=H["asha"], json={"text": "7"}).status_code == 200        # one digit is content

@@ -173,7 +173,7 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
          all(x in m.message for m in comms for x in ("INV-1024", "62,500", "pending_approval", "2026-10-20"))),
         ("no raw contact stored: recipients are masked, messages say 'For queries: [EMAIL] \u00b7 [PHONE]' (leak scan clean)",
          leak_scan_store(store, data_dir) == [] and all("dme.desk" not in m.message + m.recipient and "98100" not in m.message + m.recipient
-                                                          and m.recipient_hash for m in comms)
+                                                          for m in comms)
          and all("For queries: [EMAIL] \u00b7 [PHONE]" in m.message for m in comms)),
         ("precedent saved and ACTIVE", len(new_prec) == 1 and new_prec[0].status == PageStatus.ACTIVE and len(brain.precedents()) == n_before + 1),
         ("Asha cannot view billing", not can_view(asha, done, "billing")),
