@@ -24,15 +24,16 @@
     async function load() {
       var p = new URLSearchParams();
       [['case', 'f-case'], ['event', 'f-event'], ['actor', 'f-actor']].forEach(function (x) { var v = document.getElementById(x[1]).value.trim(); if (v) p.set(x[0], v); });
+      if (!seen && CG.q('event') && !p.get('event')) p.set('event', CG.q('event'));            // arriving from a dashboard link
       var box = document.getElementById('table');
       CG.loading(box, 'Loading events…');
       try {
         var r = await CG_API.get('/api/audit' + (p.toString() ? '?' + p : ''));
-        if (!seen) { document.getElementById('f-event').innerHTML = '<option value="">Anything</option>' + r.event_types.map(function (t) { return '<option value="' + CG.esc(t) + '">' + CG.esc(CG.eventName(t)) + '</option>'; }).join(''); seen = true; }
+        if (!seen) { document.getElementById('f-event').innerHTML = '<option value="">Anything</option>' + r.event_types.map(function (t) { return '<option value="' + CG.esc(t) + '"' + (t === CG.q('event') ? ' selected' : '') + '>' + CG.esc(CG.eventName(t)) + '</option>'; }).join(''); seen = true; }
         box.innerHTML = r.events.length ? '<div class="small muted" style="margin-bottom:6px">' + r.events.length + ' event' + (r.events.length === 1 ? '' : 's') + '</div><div class="tablewrap"><table><thead><tr><th>Time</th><th>Case</th><th>What happened</th><th>Who</th><th></th></tr></thead><tbody>' +
           r.events.map(function (e, i) {
             return '<tr><td class="small nowrap">' + CG.esc(CG.time(e.ts)) + '</td><td>' + (e.case_id ? CG.caseLink(e.case_id) : '<span class="faint">system</span>') + '</td><td>' +
-              CG.tag(CG.eventName(e.event), HOT[e.event] || 'grey', e.event) + '</td><td class="small">' + CG.esc(e.actor_id + ' · ' + CG.role(e.actor_role)) + '</td><td><button class="btn sm" type="button" data-i="' + i + '" aria-expanded="false">Details</button></td></tr>' +
+              CG.tag(CG.eventName(e.event), HOT[e.event] || 'grey', e.event) + '</td><td class="small">' + CG.esc(CG.userName(e.actor_id) + ' · ' + CG.role(e.actor_role)) + '</td><td><button class="btn sm" type="button" data-i="' + i + '" aria-expanded="false">Details</button></td></tr>' +
               '<tr id="d' + i + '" hidden><td colspan="5"><pre class="mono small" style="margin:0;white-space:pre-wrap;word-break:break-all;background:var(--bg);padding:10px;border-radius:8px">' + CG.esc(JSON.stringify(e.details, null, 2)) + '</pre></td></tr>';
           }).join('') + '</tbody></table></div>' : CG.empty('No events match. Clear a filter or submit a request.');
         CG.$$('button[data-i]', box).forEach(function (b) { b.onclick = function () { var row = document.getElementById('d' + b.dataset.i); row.hidden = !row.hidden; b.setAttribute('aria-expanded', String(!row.hidden)); }; });
@@ -48,7 +49,7 @@
     try { rows = await CG_API.get('/api/comms'); } catch (e) { CG.fail(e); body.innerHTML = CG.empty('Could not load messages.'); return; }
     body.innerHTML = '<div class="card"><p class="small muted" style="margin-bottom:10px">Sent when a reviewer approves a case. E-mail is simulated in this build; WhatsApp and SMS always are. Nothing leaves the system.</p>' +
       (rows.length ? '<div class="tablewrap"><table id="msgs"><thead><tr><th>Case</th><th>Channel</th><th>To</th><th>Status</th><th>Time</th></tr></thead><tbody>' + rows.map(function (r, i) {
-        return '<tr class="click" data-i="' + i + '"><td>' + CG.caseLink(r.case_id) + '</td><td>' + CG.esc(r.channel) + '</td><td class="small mono">' + CG.esc(r.recipient) + '</td><td>' + (r.simulated ? CG.tag('Simulated', 'grey') : CG.tag(CG.human(r.status), r.status === 'failed' ? 'red' : 'green')) +
+        return '<tr class="click" data-i="' + i + '"><td>' + CG.caseLink(r.case_id) + '</td><td>' + CG.esc(CG.human(r.channel)) + '</td><td class="small">' + CG.esc(r.recipient) + '</td><td>' + (r.simulated ? CG.tag('Simulated', 'grey') : CG.tag(CG.human(r.status), r.status === 'failed' ? 'red' : 'green')) +
           '</td><td class="small nowrap">' + CG.esc(CG.time(r.ts)) + '</td></tr><tr id="m' + i + '" hidden><td colspan="5"><div class="callout grey" style="white-space:pre-wrap">' + CG.esc(r.message) + '</div></td></tr>';
       }).join('') + '</tbody></table></div>' : CG.empty('No messages yet. Approve a case with a channel selected to create one.')) + '</div>';
     CG.$$('#msgs tr.click').forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.tagName === 'A') return; var d = document.getElementById('m' + tr.dataset.i); d.hidden = !d.hidden; }; });

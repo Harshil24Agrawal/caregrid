@@ -14,17 +14,17 @@ Design: navy header, white cards on light grey, one blue for actions. Colour car
 amber = needs review / medium, red = critical / conflict / refused, grey = info / stale. Reason codes appear in plain words with the code
 in a tooltip ("Policies disagree" = POLICY_CONFLICT).
 
-Header on every page: provider pill, PHI masked count (personal-data types recorded in the audit log for the cases you can see), demo login
-switcher (the acting user is sent as the `X-CareGrid-User` header; NOT real authentication) and Reset demo (with confirmation).
+Header on every page: provider pill, PHI masked count (masked tokens such as [PERSON_1], [NPI], [PHONE] in the cases you can see; computed by the API, values never stored), demo login
+switcher (the acting user is sent as the `X-CareGrid-User` header; NOT real authentication) and, for ops managers and senior reviewers in demo mode only, Reset demo (with confirmation).
 Nav: Dashboard · New request · Cases · Knowledge · Audit. The old `approval.html` and `comms.html` redirect (to the case's Decide panel and to
 Audit > Messages).
 
 | Page | The one question it answers |
 |---|---|
-| Dashboard | What needs me right now? Attention banner, 4 KPIs, trust ladder, my queue, needs-attention cards; evaluation, gap radar and pipeline below. |
+| Dashboard | What needs me right now? A role-aware banner (requester: my requests; approvers: only what they can approve; knowledge owner: conflicts, gaps and policy updates; auditor: blocked or denied events), 4 KPIs, trust ladder, my queue, needs-attention cards; evaluation, gap radar and pipeline below. |
 | New request | What happens to my request? One result card with a headline per state. |
 | Cases | What is going on with this case? List, or one case: why a human, risk, confidence, sources, next step, Decide panel, assistant, evidence / graph / audit / messages tabs. |
-| Knowledge | What does the Second Brain say, and what is wrong with it? Pages with versions (compare), needs attention (lint), change requests (PRs). |
+| Knowledge | What does the Second Brain say, and what is wrong with it? Pages with versions (compare), needs attention (lint) and policy updates (PRs); the last two are for knowledge admins only. |
 | Audit | What happened, and who did it? Log with plain-word events; Messages tab with "simulated" tags. |
 
 ## Click paths (users: Asha ops employee, Vikram Enrollment specialist, Neha ops manager, Rahul senior reviewer, Meera knowledge owner, Arjun auditor, Kiran IT specialist)
@@ -37,7 +37,7 @@ Audit > Messages).
 | **S4** | Asha -> type the insulin question: "Refused: medical question -> Clinical Review". Type the "Ignore previous instructions..." text: "Refused: access denied -> Compliance & Privacy". |
 | **S5** | Rahul -> Cases -> CASE-1024 -> assistant "Why is this case flagged?" (cites KA-40 and INV-1024) -> Decide: More options -> tick Email + WhatsApp, enter a contact e-mail -> Submit decision (state path, precedent, trust). Audit > Messages lists both (simulated). Switch to Asha -> same case: amount hidden, evidence locked, "What is the amount?" answers ACCESS RESTRICTED, Decide explains why she can't. |
 | **S6** | Asha submits the name-change request (confidence 60). Vikram -> case -> Decide -> Submit. Asha submits the second name change -> 75, citing the new precedent in Sources. Dashboard -> trust ladder shows the streak. |
-| **S7** | Asha submits S3. Kiran -> case -> Decide -> More options -> "Propose a change to a policy", KA-32, "Retire this policy" -> Submit. Meera -> Knowledge -> Change requests -> Approve. Needs attention is now clear; Asha submits S3 again: no "Policies disagree". |
+| **S7** | Asha submits S3. Kiran -> case -> Decide -> More options -> "Propose a change to a policy", KA-32, "Retire this policy" -> Submit. Meera -> Knowledge -> Policy updates -> Approve. Needs attention is now clear; Asha submits S3 again: no "Policies disagree". |
 
 ## Tests
 

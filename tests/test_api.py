@@ -348,5 +348,29 @@ def test_empty_or_whitespace_request_is_rejected_without_an_echo(client):
 def test_approval_reason_is_the_role_rule_only(client):
     neha = client.get("/api/cases/CASE-1024", headers=H["neha"]).json()
     why = neha["actions"]["approve"]["reason"]
-    assert why == "HIGH risk needs a senior reviewer." or why == "HIGH risk needs a senior reviewer"
-    assert "POLICY" not in why and "reason" not in why.lower()
+    assert why == "Ops managers can't approve HIGH-risk cases. A senior reviewer decides them."
+    asha = client.get("/api/cases/CASE-1024", headers=H["asha"]).json()["actions"]["approve"]["reason"]
+    assert asha == "Ops employees can't approve. A senior reviewer decides HIGH-risk cases."        # role rule first, not separation of duties
+    audit = client.get("/api/cases/CASE-1024", headers=H["arjun"]).json()["actions"]["approve"]["reason"]
+    assert audit.startswith("Auditors can't approve.")
+
+
+def test_polish_data_for_the_ui(client):
+    # PHI masked: a count of masked tokens in the visible cases, never 0 when tokens exist
+    for who in ("asha", "rahul", "meera"):
+        m = client.get("/api/metrics", headers=H[who]).json()
+        assert isinstance(m["phi_masked"], int)
+    post_request(client, "asha", S2)
+    assert client.get("/api/metrics", headers=H["asha"]).json()["phi_masked"] >= 3          # address, NPI, person tokens
+    assert client.get("/api/metrics", headers=H["vikram"]).json()["phi_masked"] <= client.get("/api/metrics", headers=H["neha"]).json()["phi_masked"]
+    # can_approve per row: only for cases the viewer could decide
+    rows = client.get("/api/cases", headers=H["rahul"]).json()
+    waiting = [c for c in rows if c["state"] == "in_review"]
+    assert waiting and all(c["can_approve"] for c in waiting) and not any(c["can_approve"] for c in rows if c["state"] not in ("in_review", "escalated"))
+    assert client.get("/api/cases", headers=H["asha"]).json()[0]["can_approve"] is False
+    assert not any(c["can_approve"] for c in client.get("/api/cases", headers=H["arjun"]).json())
+    # the MISSING row is visible to every role that can see the summary (field names only)
+    case = post_request(client, "asha", S2)
+    assert set(case["missing"]["missing"]) == {"effective_date", "supporting_document"} and case["missing"]["invalid"] == ["npi"]
+    assert case["reviewer"]["restricted"] is True
+    assert "9 digits" not in str(case["missing"])

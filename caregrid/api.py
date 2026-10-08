@@ -146,8 +146,9 @@ def hours_since(ts: datetime) -> float:
     return round((datetime.now() - ts).total_seconds() / 3600, 1)
 
 
-def case_row(c: Case) -> dict:
+def case_row(c: Case, user: User | None = None) -> dict:
     return {
+        "can_approve": bool(user and c.state in DECIDABLE and can_approve(user, c)),
         "id": c.id, "request_type": c.classification.request_type if c.classification else "unknown", "state": c.state.value,
         "risk": c.rules.risk.value if c.rules else None, "band": c.confidence.band.value if c.confidence else None,
         "score": c.confidence.score if c.confidence else None, "team": c.assigned_team, "routing": c.routing,
@@ -157,6 +158,18 @@ def case_row(c: Case) -> dict:
     }
 
 
+_MASK_TOKEN = re.compile(r"\[[A-Z][A-Z_]*(?:_\d+)?\]")        # [PERSON_1] [MEMBER_ID] [NPI] [PHONE] [EMAIL] [ADDRESS] [DATE_OF_BIRTH] ...
+
+
+def phi_masked(cases: list[Case]) -> int:
+    """How many masked tokens the viewer's visible cases carry (counted, never shown: the values were never stored)."""
+    return sum(len(_MASK_TOKEN.findall(c.masked_text or "")) for c in cases)
+
+
+ROLE_PLURAL = {"ops_employee": "Ops employees", "team_specialist": "Team specialists", "ops_manager": "Ops managers",
+               "senior_reviewer": "Senior reviewers", "knowledge_owner": "Knowledge owners", "auditor": "Auditors"}
+
+
 def approval_gate(user: User, case: Case) -> dict:
     """Why the approve / ask actions are or are not allowed for this user (the UI only displays this)."""
     ask_ok = can_view(user, case, "full") and case.requester.id != user.id
@@ -164,15 +177,20 @@ def approval_gate(user: User, case: Case) -> dict:
     ok = can_approve(user, case)
     if ok:
         why = ""
-    elif case.requester.id == user.id:
-        why = "Separation of duties: you cannot approve your own request."
-    elif case.rules is None or user.role.value not in {"team_specialist", "ops_manager", "senior_reviewer"}:
-        why = f"Your role ({user.role.value.replace('_', ' ')}) cannot approve cases."
-    elif user.role.value == "team_specialist" and user.team != case.assigned_team:
-        why = f"This case belongs to {case.assigned_team}; your team is {user.team}."
     else:
+        # role rule first; separation of duties only when the role COULD approve this case but is its requester
+        could = can_approve(user, case.model_copy(update={"requester": User(id="U-none", name="x", role=Role.OPS_EMPLOYEE)}))
         need = case.approver_role.value.replace("_", " ") if case.approver_role else "senior reviewer"
-        why = f"{case.rules.risk.value.upper()} risk needs a {need}."
+        risk = case.rules.risk.value.upper() if case.rules else "this"
+        plural = ROLE_PLURAL.get(user.role.value, user.role.value.replace("_", " "))
+        if could and case.requester.id == user.id:
+            why = "Separation of duties: you can't approve your own request."
+        elif user.role.value not in {"team_specialist", "ops_manager", "senior_reviewer"}:
+            why = f"{plural} can't approve. A {need} decides {risk}-risk cases."
+        elif user.role.value == "team_specialist" and case.rules and user.team != case.assigned_team and risk == "LOW":
+            why = f"This case belongs to {case.assigned_team}; your team is {user.team}."
+        else:
+            why = f"{plural} can't approve {risk}-risk cases. A {need} decides them."
     decidable = case.state in DECIDABLE or case.state == State.NEEDS_INFO
     return {"decidable": decidable, "state": case.state.value,
             "approve": {"allowed": ok and case.state in DECIDABLE, "reason": why or ("" if case.state in DECIDABLE else f"Case is {case.state.value}.")},
@@ -245,6 +263,7 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
                                                               "consecutive_agreements": trust.consecutive_agreements},
         "confidence": {"score": conf.score, "band": conf.band.value} if conf else None,
         "pii_types": pii_types(store, case.id),
+        "missing": {"missing": list(rules.missing_fields) if rules else [], "invalid": list(rules.invalid_fields) if rules else []},   # field names only
         "proposal": None,
         "reviewer": None,
         "evidence": evidence(case, user, brain),
@@ -346,7 +365,7 @@ def api_create_request(body: RequestIn, user: User = Depends(actor)):
 def api_cases(user: User = Depends(actor)):
     store = get_store()
     rows = sorted(visible_cases(user, store), key=lambda c: c.created_at, reverse=True)
-    return scrub([case_row(c) for c in rows], user)
+    return scrub([case_row(c, user) for c in rows], user)
 
 
 @app.get("/api/cases/{case_id}")
@@ -452,7 +471,8 @@ def api_metrics(user: User = Depends(actor)):
         t["agreement_pct"] = round(100 * t["agreements"] / t["total_reviews"], 1) if t["total_reviews"] else None
         t["label"] = TRUST_LABEL.get(t["level"])
     return scrub({
-        "counts": metrics.dashboard_counts(sc), "queue": [case_row(c) for c in sorted(waiting, key=lambda c: c.created_at)],
+        "counts": metrics.dashboard_counts(sc), "queue": [case_row(c, user) for c in sorted(waiting, key=lambda c: c.created_at)],
+        "phi_masked": phi_masked(visible_cases(user, store)),
         "visible_cases": len(visible_cases(user, store)), "trust": trust, "gap_radar": metrics.gap_radar(sc, brain),
         "queue_aging": metrics.queue_aging(sc), "cost_split": metrics.cost_split(sc),
         "trust_thresholds": {"l1_streak": config.TRUST_L1_STREAK, "l1_ratio": config.TRUST_L1_RATIO, "l2_reviews": config.TRUST_L2_REVIEWS},

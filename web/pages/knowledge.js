@@ -12,14 +12,14 @@
 
   el.innerHTML = '<div class="page-head"><h1>Knowledge</h1><p class="muted">The pages the assistant may cite. Drafts are never cited.</p></div><div class="tabs" id="tabs" role="tablist"></div><div id="body"></div>';
   var admin = CG.isKnowledgeAdmin();
-  var TABS = admin ? [['pages', 'Pages'], ['lint', 'Needs attention'], ['prs', 'Change requests']] : [['pages', 'Pages']];
+  var TABS = admin ? [['pages', 'Pages'], ['lint', 'Needs attention'], ['prs', 'Policy updates']] : [['pages', 'Pages']];
   if (!admin) tab = 'pages';
   function drawTabs() {
     document.getElementById('tabs').innerHTML = TABS.map(function (t) { return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('');
     CG.$$('#tabs .tab').forEach(function (b) { b.onclick = function () { tab = b.dataset.t; drawTabs(); show(); }; });
   }
   drawTabs(); show();
-  if (!admin) document.getElementById('tabs').insertAdjacentHTML('afterend', '<p class="small muted" id="role-note" style="margin:-6px 0 12px">Needs attention and change requests are not available for your role. You see approved pages only.</p>');
+  if (!admin) document.getElementById('tabs').insertAdjacentHTML('afterend', '<p class="small muted" id="role-note" style="margin:-6px 0 12px">Needs attention and policy updates are not available for your role. You see approved pages only.</p>');
   function show() { var b = document.getElementById('body'); if (tab === 'pages') pagesTab(b); else if (tab === 'lint') lintTab(b); else prsTab(b); }
 
   // ------------------------------------------------------------ pages
@@ -97,20 +97,20 @@
   async function prsTab(body) {
     CG.loading(body);
     var prs;
-    try { prs = await CG_API.get('/api/prs'); } catch (e) { CG.fail(e); body.innerHTML = CG.empty('Could not load change requests.'); return; }
+    try { prs = await CG_API.get('/api/prs'); } catch (e) { CG.fail(e); body.innerHTML = CG.empty('Could not load policy updates.'); return; }
     var open = prs.filter(function (p) { return p.status === 'open'; }), done = prs.filter(function (p) { return p.status !== 'open'; });
-    body.innerHTML = (isOwner ? '' : '<div class="lock" style="margin-bottom:12px"><span aria-hidden="true">🔒</span><span>Only the knowledge owner approves or rejects change requests. You can read them.</span></div>') +
-      '<div class="card"><div class="card-title"><h2>Open change requests (' + open.length + ')</h2></div>' + (open.length ? open.map(function (p) {
-        return '<div class="att blue" style="cursor:default"><div class="top"><span><b class="mono">' + CG.esc(p.id) + '</b> on <a class="mono" href="' + CG.pageLink(p.target_page_id) + '">' + CG.esc(p.target_page_id) + '</a> (v' + p.base_version + ')</span><span class="small muted">by ' + CG.esc(p.author_id) + ' · ' + CG.esc(CG.time(p.created_at)) + '</span></div>' +
+    body.innerHTML = (isOwner ? '' : '<div class="lock" style="margin-bottom:12px"><span aria-hidden="true">🔒</span><span>Only the knowledge owner approves or rejects policy updates. You can read them.</span></div>') +
+      '<div class="card"><div class="card-title"><h2>Open policy updates (' + open.length + ')</h2></div>' + (open.length ? open.map(function (p) {
+        return '<div class="att blue" style="cursor:default"><div class="top"><span><b class="mono">' + CG.esc(p.id) + '</b> on <a class="mono" href="' + CG.pageLink(p.target_page_id) + '">' + CG.esc(p.target_page_id) + '</a> (v' + p.base_version + ')</span><span class="small muted">by ' + CG.esc(CG.userName(p.author_id)) + ' · ' + CG.esc(CG.time(p.created_at)) + '</span></div>' +
           '<p class="small" style="margin-bottom:6px">' + CG.esc(p.reason) + '</p>' + (Object.keys(p.meta_changes || {}).length ? '<div style="margin-bottom:6px">' + Object.keys(p.meta_changes).map(function (k) { return '<span class="chip amber">' + CG.esc(k === 'retire' ? 'Retire this policy' : k === 'target_page' ? 'Policy: ' + p.meta_changes[k] : CG.human(k) + ': ' + p.meta_changes[k]) + '</span>'; }).join('') + '</div>' : '') +
           CG.diffHtml(p.diff) + '<div class="flex" style="margin-top:10px"><button class="btn primary" data-act="approve" data-id="' + CG.esc(p.id) + '" type="button"' + (isOwner ? '' : ' disabled title="Knowledge owner only"') + '>Approve</button><button class="btn danger" data-act="reject" data-id="' + CG.esc(p.id) + '" type="button"' + (isOwner ? '' : ' disabled title="Knowledge owner only"') + '>Reject</button></div></div>';
-      }).join('') : CG.empty('No open change requests. A reviewer can propose one while deciding a case.')) + '</div>' +
+      }).join('') : CG.empty('No open policy updates. A reviewer can suggest one while deciding a case.')) + '</div>' +
       (done.length ? '<div class="card"><div class="card-title"><h2>Decided (' + done.length + ')</h2></div><table><tbody>' + done.map(function (p) {
-        return '<tr><td class="mono">' + CG.esc(p.id) + '</td><td class="mono">' + CG.esc(p.target_page_id) + '</td><td>' + CG.tag(CG.human(p.status), p.status === 'approved' ? 'green' : 'red') + '</td><td class="small">' + CG.esc(p.decided_by) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '');
+        return '<tr><td class="mono">' + CG.esc(p.id) + '</td><td class="mono">' + CG.esc(p.target_page_id) + '</td><td>' + CG.tag(CG.human(p.status), p.status === 'approved' ? 'green' : 'red') + '</td><td class="small">' + CG.esc(CG.userName(p.decided_by)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '');
     CG.$$('button[data-act]', body).forEach(function (b) {
       b.onclick = async function () {
         var approve = b.dataset.act === 'approve';
-        var ok = await CG.confirm((approve ? 'Approve ' : 'Reject ') + b.dataset.id + '?', approve ? 'A new page version is published (or the page is retired) and dependent past decisions become stale.' : 'The request is closed and the page is left unchanged.', approve ? 'Approve' : 'Reject');
+        var ok = await CG.confirm((approve ? 'Approve ' : 'Reject ') + b.dataset.id + '?', approve ? 'A new page version is published (or the page is retired) and dependent past decisions become stale.' : 'The suggestion is closed and the page is left unchanged.', approve ? 'Approve' : 'Reject');
         if (!ok) return;
         try { await CG_API.post('/api/prs/' + encodeURIComponent(b.dataset.id) + '/decision', { approve: approve }); CG.toast(b.dataset.id + (approve ? ' approved.' : ' rejected.'), 'ok'); prsTab(body); } catch (e) { CG.fail(e); }
       };

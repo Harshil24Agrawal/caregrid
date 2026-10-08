@@ -8,8 +8,7 @@
   try { list = await CG_API.get('/api/cases'); } catch (e) { CG.fail(e); el.innerHTML = CG.empty('Could not load cases.'); return; }
   var wanted = CG.q('case');
   if (!wanted) return showList();
-  var visible = list.some(function (c) { return c.id === wanted; });
-  if (!visible) {
+  if (!list.some(function (c) { return c.id === wanted; })) {
     el.innerHTML = '<div class="page-head"><a class="small" href="case.html">← All cases</a><h1>' + CG.esc(wanted) + '</h1></div><div class="card">' + CG.lock({ message: 'ACCESS RESTRICTED: this case is not visible to ' + me.name + ' (' + CG.role(me.role) + ').' }) + '</div>';
     return;
   }
@@ -18,14 +17,15 @@
   // ------------------------------------------------------------------ list
   function showList() {
     var states = Array.from(new Set(list.map(function (c) { return c.state; })));
+    var start = CG.q('state') && states.indexOf(CG.q('state')) >= 0 ? CG.q('state') : '';
     el.innerHTML = '<div class="page-head"><h1>Cases</h1><p class="muted">' + list.length + ' case' + (list.length === 1 ? '' : 's') + ' visible to ' + CG.esc(me.name) + ' (' + CG.esc(CG.role(me.role)) + ').</p></div>' +
-      '<div class="card"><div class="flex" style="margin-bottom:10px"><label class="small muted">Show <select id="f-state"><option value="">all</option>' + states.map(function (s) { return '<option value="' + CG.esc(s) + '">' + CG.esc(CG.human(s)) + '</option>'; }).join('') + '</select></label></div>' +
+      '<div class="card"><div class="flex" style="margin-bottom:10px"><label class="small muted">Show <select id="f-state"><option value="">all</option>' + states.map(function (s) { return '<option value="' + CG.esc(s) + '"' + (s === start ? ' selected' : '') + '>' + CG.esc(CG.human(s)) + '</option>'; }).join('') + '</select></label></div>' +
       '<div class="tablewrap"><table><thead><tr><th>Case</th><th>What</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody id="rows"></tbody></table></div></div>';
     function draw() {
       var f = document.getElementById('f-state').value;
       document.getElementById('rows').innerHTML = list.filter(function (c) { return !f || c.state === f; }).map(function (c) {
-        return '<tr class="click" data-id="' + CG.esc(c.id) + '"><td>' + CG.caseLink(c.id) + '</td><td>' + CG.esc(CG.what(c.request_type)) + '</td><td>' + CG.stateTag(c.state) + '</td><td>' + CG.riskTag(c.risk) +
-          '</td><td class="small">' + CG.esc(CG.team(c.team)) + '</td><td class="nowrap small">' + CG.esc(CG.age(c.age_hours)) + '</td></tr>';
+        return '<tr class="click" data-id="' + CG.esc(c.id) + '"><td class="nw">' + CG.caseLink(c.id) + '</td><td class="nw">' + CG.esc(CG.what(c.request_type)) + '</td><td class="nw">' + CG.stateTag(c.state) + '</td><td class="nw">' + CG.riskTag(c.risk, true) +
+          '</td><td class="nw small">' + CG.esc(CG.team(c.team)) + '</td><td class="nw small">' + CG.esc(CG.age(c.age_hours)) + '</td></tr>';
       }).join('') || '<tr><td colspan="6">' + CG.empty('No cases in this state.') + '</td></tr>';
       CG.$$('#rows tr.click').forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.tagName !== 'A') window.location.href = 'case.html?case=' + encodeURIComponent(tr.dataset.id); }; });
     }
@@ -45,36 +45,50 @@
     if (CG.q('decide') === '1') { var d = document.getElementById('decide'); if (d) d.scrollIntoView(); }
   }
 
+  var cap = function (s) { return s.charAt(0).toUpperCase() + s.slice(1); };
+  var approverText = function () { return c.approver_role ? 'a ' + CG.role(c.approver_role).toLowerCase() : 'a person'; };
+
+  // WHY A HUMAN: one plain sentence
+  function whySentence() {
+    if (c.routing === 'auto') return '<span class="tag green">Auto</span> Answered automatically from approved policy; no person was needed.';
+    if (c.state === 'needs_info') return 'Details are missing, so the requester must send them first.';
+    var r = c.reviewer, base = '';
+    if (!CG.isRestricted(r) && r.risk_reasons.length) {
+      var m = r.risk_reasons[0].match(/^cost\s+(\S+)\s+above\s+(\S+)\s+threshold\s*(\[[^\]]+\])?/i);
+      base = m ? 'Cost is above the ' + m[2] + ' limit' + (m[3] ? ' ' + m[3] : '') : cap(r.risk_reasons[0].replace(/\.$/, ''));
+    } else if (c.reason_codes.length) base = cap(c.reason_codes.slice(0, 2).map(function (x) { return CG.reasonLabel(x).toLowerCase(); }).join(' and '));
+    else base = 'This case needs a person';
+    return CG.esc(base) + ', so ' + CG.esc(approverText()) + ' must approve.';
+  }
+  function nextStep() {
+    var done = ['approved', 'actioned', 'notified', 'closed', 'rejected'];
+    if (c.state === 'needs_info') return 'Waiting for the requester to send the missing details.';
+    if (c.state === 'answered') return 'Nothing more to do: the answer was sent.';
+    if (done.indexOf(c.state) >= 0) return 'Done: this case is ' + CG.human(c.state).toLowerCase() + '.';
+    return 'A ' + (c.approver_role ? CG.role(c.approver_role).toLowerCase() : 'person') + ' in ' + CG.team(c.assigned_team) + ' will decide.';
+  }
+
   function rowsHtml() {
     var r = c.reviewer, p = c.proposal, locked = CG.isRestricted(r);
-    var why;
-    if (c.routing === 'auto') why = '<span class="tag green">Auto</span> Answered automatically from approved policy; no person was needed.';
-    else {
-      var because = c.reason_codes.slice(0, 2).map(function (x) { return CG.reasonLabel(x).toLowerCase(); }).join(' and ');
-      why = 'A ' + CG.esc(c.approver_role ? CG.role(c.approver_role).toLowerCase() : 'person') + ' at ' + CG.esc(CG.team(c.assigned_team)) + ' decides' + (because ? ', because: ' + CG.esc(because) : '') + '.';
-    }
     var risk = CG.riskTag(c.risk) + (locked ? '' : (r.risk_reasons.length ? '<ul style="margin:6px 0 0 18px;padding:0">' + r.risk_reasons.map(function (x) { return '<li>' + CG.esc(x) + '</li>'; }).join('') + '</ul>' : ''));
     var conf = locked ? (CG.band(c.confidence) + '<div class="small muted" style="margin-top:6px">Details are limited for your role.</div>') : (r.confidence ? CG.confidenceBar(r.confidence) : CG.empty('Not scored.'));
-    var missing = locked ? CG.lock(r) : (r.missing_fields.length || Object.keys(r.invalid_fields).length ?
-      '<ul style="margin:0 0 0 18px;padding:0">' + r.missing_fields.map(function (f) { return '<li>' + CG.esc(CG.human(f)) + ': missing</li>'; }).join('') +
-      Object.keys(r.invalid_fields).map(function (f) { return '<li>' + CG.esc(CG.human(f)) + ': ' + CG.esc(r.invalid_fields[f]) + '</li>'; }).join('') + '</ul>' : '<span class="muted">Nothing missing.</span>');
-    var next = p ? (p.next_steps.length ? CG.esc(p.next_steps[0]) + (p.next_steps.length > 1 ? ' <span class="small muted">(+' + (p.next_steps.length - 1) + ' more)</span>' : '') : 'Route to ' + CG.esc(CG.team(p.route_team || c.assigned_team)) + '.') : '<span class="muted">No recommendation yet.</span>';
-    var extra = locked ? '' : r.conflicts.map(function (x) { return '<div class="callout red"><b>Policies disagree:</b> ' + CG.esc(x) + '</div>'; }).join('') + r.notes.map(function (x) { return '<div class="callout grey">' + CG.esc(x) + '</div>'; }).join('');
+    var names = (c.missing.missing || []).concat(c.missing.invalid || []);
+    var missing = names.length ? '<ul style="margin:0 0 0 18px;padding:0">' + names.map(function (f) { return '<li>' + CG.esc(CG.human(f)) + '</li>'; }).join('') + '</ul>' : '<span class="muted">Nothing missing.</span>';
+    var extra = locked ? '' : r.conflicts.map(function (x) { return '<div class="callout red"><b>Policies disagree:</b> ' + CG.esc(x) + '</div>'; }).join('') + r.notes.map(function (x) { return '<div class="callout grey">' + CG.esc(CG.plainNote(x)) + '</div>'; }).join('');
     function row(label, html) { return '<div class="row"><div class="label">' + label + '</div><div>' + html + '</div></div>'; }
     return '<div class="rows">' + row('What', '<span style="white-space:pre-wrap">' + CG.esc(c.masked_text) + '</span>' + (c.pii_types.length ? '<div style="margin-top:4px">' + c.pii_types.map(function (t) { return '<span class="chip grey">masked: ' + CG.esc(CG.piiLabel(t)) + '</span>'; }).join('') + '</div>' : '')) +
-      row('Why a human', why) + row('Risk', risk) + row('Confidence', conf) + row('Missing', missing) +
-      row('Sources', p && p.citations.length ? p.citations.map(CG.citationChip).join('') : '<span class="muted">No verified source: sent to a person.</span>') + row('Next step', next) + '</div>' + extra;
+      row('Why a human', whySentence()) + row('Risk', risk) + row('Confidence', conf) + row('Missing', missing) +
+      row('Sources', p && p.citations.length ? p.citations.map(CG.citationChip).join('') : '<span class="muted">No verified source: sent to a person.</span>') + row('Next step', CG.esc(nextStep())) + '</div>' + extra;
   }
 
   function decidePanel() {
-    var a = c.actions;
-    var done = '';
+    var a = c.actions, done = '';
     if (lastResult) {
       var r = lastResult.result;
       done = '<div class="callout green" id="decision-result"><b>Decision recorded.</b><div class="stack" style="margin-top:6px"><div>' + r.state_path.map(CG.stateTag).join(' → ') + '</div>' +
         '<div class="small">Precedent: <b class="mono">' + CG.esc(r.precedent_id || 'none saved') + '</b></div>' +
         '<div class="small">Trust: ' + (r.trust ? CG.esc(CG.what(r.trust.request_type) + ': level ' + r.trust.level_before + ' → ' + r.trust.level_after + ', streak ' + r.trust.streak_before + ' → ' + r.trust.streak_after) : 'unchanged') + '</div>' +
-        (r.pr_id ? '<div class="small">Change request opened: <a href="knowledge.html?tab=prs" class="mono">' + CG.esc(r.pr_id) + '</a></div>' : '') +
+        (r.pr_id ? '<div class="small">Policy update suggested: <a href="knowledge.html?tab=prs" class="mono">' + CG.esc(r.pr_id) + '</a></div>' : '') +
         (r.communications.length ? '<div class="small">Messages: ' + r.communications.map(function (m) { return CG.esc(m.channel + ' (' + m.status + ')'); }).join(', ') + '</div>' : '') + '</div></div>';
     }
     if (!a.decidable) return '<div class="card" id="decide"><h2>Decide</h2>' + done + (done ? '' : '<p class="muted" style="margin-top:6px">This case is ' + CG.esc(CG.human(c.state).toLowerCase()) + ': there is nothing to decide.</p>') + '</div>';
@@ -82,42 +96,57 @@
     var policies = c.proposal ? c.proposal.citations.filter(function (x) { return x.page_type === 'policy'; }) : [];
     var ACTIONS = [['approve', 'Approve'], ['edit_approve', 'Edit and approve'], ['reject', 'Reject'], ['escalate', 'Escalate'], ['ask_requester', 'Ask requester']];
     return '<div class="card" id="decide"><h2>Decide</h2>' + done + (a.approve.allowed ? '' : '<div class="lock" style="margin:10px 0"><span aria-hidden="true">🔒</span><span>' + CG.esc(a.approve.reason) + '</span></div>') +
-      '<div class="flex" style="margin:10px 0" id="actions" role="radiogroup" aria-label="Decision">' + ACTIONS.map(function (x, i) {
+      '<div class="flex" style="margin:10px 0" id="actions" role="radiogroup" aria-label="Decision">' + ACTIONS.map(function (x) {
         var ok = x[0] === 'ask_requester' ? a.ask.allowed : a.approve.allowed;
-        return '<label class="chip' + (ok ? '' : ' dim') + '"><input type="radio" name="action" value="' + x[0] + '" ' + (ok ? '' : 'disabled ') + (i === 0 && a.approve.allowed ? 'checked' : '') + '> ' + x[1] + '</label>';
+        return '<label class="chip' + (ok ? '' : ' dim') + '"><input type="radio" name="action" value="' + x[0] + '" ' + (ok ? '' : 'disabled') + '> ' + x[1] + '</label>';
       }).join('') + '</div>' +
       '<div id="edit-wrap" style="display:none;margin-bottom:10px"><label class="field">Edited answer<textarea id="edited" rows="4">' + CG.esc(c.proposal ? c.proposal.answer_text : '') + '</textarea></label></div>' +
       '<label class="field">Note <textarea id="note" rows="2" maxlength="2000" placeholder="Why? (masked before it is stored)"></textarea></label>' +
       '<div class="flex" style="margin:10px 0"><label><input type="checkbox" id="prec" checked> Save as precedent</label></div>' +
-      '<details id="more"><summary class="small" style="cursor:pointer">More options: change request, contact, channels</summary><div class="stack" style="margin-top:10px">' +
-      '<label><input type="checkbox" id="pr" ' + (policies.length ? '' : 'disabled') + '> Propose a change to a policy' + (policies.length ? '' : ' (this case cites none)') + '</label>' +
-      '<div id="pr-wrap" style="display:none" class="stack"><label class="field">Policy <select id="pr-target">' + policies.map(function (x) { return '<option>' + CG.esc(x.page_id) + '</option>'; }).join('') + '</select></label>' +
-      '<label><input type="checkbox" id="pr-retire"> Retire this policy (no replacement)</label></div>' +
+      '<details id="more"><summary class="small" style="cursor:pointer">More options: contact, channels, policy update</summary><div class="stack" style="margin-top:10px">' +
       '<label class="field">Official contact email<input type="text" id="email" placeholder="desk@clinic.example"></label><label class="field">Official contact phone<input type="text" id="phone" placeholder="+91 …"></label>' +
-      '<div class="flex"><span class="small muted">Notify via</span>' + ['email', 'whatsapp', 'sms', 'portal'].map(function (ch) { return '<label class="small"><input type="checkbox" class="chan" value="' + ch + '"> ' + ch + '</label>'; }).join('') + '</div></div></details>' +
-      '<div class="flex" style="margin-top:14px"><button class="btn primary" id="go" type="button">Submit decision</button><span id="go-why" class="small muted"></span></div></div>';
+      '<div class="flex"><span class="small muted">Notify via</span>' + ['email', 'whatsapp', 'sms', 'portal'].map(function (ch) { return '<label class="small"><input type="checkbox" class="chan" value="' + ch + '"> ' + ch + '</label>'; }).join('') + '</div>' +
+      '<label><input type="checkbox" id="pr" ' + (policies.length ? '' : 'disabled') + '> Suggest a policy update' + (policies.length ? '' : ' (this case cites no policy)') + '</label>' +
+      '<div id="pr-wrap" style="display:none" class="stack"><label class="field">Policy <select id="pr-target">' + policies.map(function (x) { return '<option>' + CG.esc(x.page_id) + '</option>'; }).join('') + '</select></label>' +
+      '<label><input type="checkbox" id="pr-retire"> Retire this policy (no replacement)</label></div></div></details>' +
+      '<div class="flex" style="margin-top:14px"><button class="btn primary" id="go" type="button" disabled>Submit decision</button><span id="go-why" class="small muted">Choose an action first.</span></div></div>';
   }
 
   function wireDecide() {
     var go = document.getElementById('go');
     if (!go) return;
+    function chosen() { return (document.querySelector('input[name=action]:checked') || {}).value; }
     function sync() {
-      var act = (document.querySelector('input[name=action]:checked') || {}).value, ask = act === 'ask_requester';
+      var act = chosen(), ask = act === 'ask_requester';
       document.getElementById('edit-wrap').style.display = act === 'edit_approve' ? '' : 'none';
       var hasPolicy = c.proposal && c.proposal.citations.some(function (x) { return x.page_type === 'policy'; });
       document.getElementById('prec').disabled = ask; document.getElementById('pr').disabled = ask || !hasPolicy;
       document.getElementById('pr-wrap').style.display = document.getElementById('pr').checked && !document.getElementById('pr').disabled ? '' : 'none';
-      var ok = ask ? c.actions.ask.allowed : c.actions.approve.allowed;
-      go.disabled = !ok || !act;
-      document.getElementById('go-why').textContent = ok ? '' : (ask ? c.actions.ask.reason : c.actions.approve.reason);
+      var ok = act ? (ask ? c.actions.ask.allowed : c.actions.approve.allowed) : false;
+      go.disabled = !ok;
+      document.getElementById('go-why').textContent = !act ? 'Choose an action first.' : ok ? '' : (ask ? c.actions.ask.reason : c.actions.approve.reason);
     }
-    CG.$$('input[name=action], #pr').forEach(function (i) { i.onchange = sync; });
+    CG.$$('input[name=action]').forEach(function (i) {
+      i.onchange = function () {
+        if (i.value === 'approve' || i.value === 'edit_approve') {     // approvals notify someone: open the contact options with Email ticked
+          var more = document.getElementById('more'); more.open = true;
+          var em = document.querySelector('.chan[value=email]'); if (em && !em.dataset.touched) em.checked = true;
+        }
+        sync();
+      };
+    });
+    CG.$$('.chan').forEach(function (x) { x.addEventListener('change', function () { x.dataset.touched = '1'; }); });
+    document.getElementById('pr').onchange = sync;
     sync();
     go.onclick = async function () {
-      var act = document.querySelector('input[name=action]:checked').value;
+      var act = chosen();
+      if (!act) return;
+      var channels = CG.$$('.chan').filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+      var email = document.getElementById('email').value.trim(), phone = document.getElementById('phone').value.trim();
+      if (act !== 'ask_requester' && channels.indexOf('email') >= 0 && !email) { document.getElementById('more').open = true; document.getElementById('email').focus(); CG.toast('Add a contact email, or untick Email.', 'error'); return; }
       var body = { action: act, note: document.getElementById('note').value, save_as_precedent: document.getElementById('prec').checked && act !== 'ask_requester',
-        propose_pr: document.getElementById('pr').checked && !document.getElementById('pr').disabled, contact_email: document.getElementById('email').value || null,
-        contact_phone: document.getElementById('phone').value || null, channels: CG.$$('.chan').filter(function (x) { return x.checked; }).map(function (x) { return x.value; }), meta_changes: {} };
+        propose_pr: document.getElementById('pr').checked && !document.getElementById('pr').disabled, contact_email: email || null, contact_phone: phone || null,
+        channels: act === 'ask_requester' ? [] : channels, meta_changes: {} };
       if (act === 'edit_approve') body.edited_answer = document.getElementById('edited').value;
       if (body.propose_pr) { body.meta_changes.target_page = document.getElementById('pr-target').value; if (document.getElementById('pr-retire').checked) body.meta_changes.retire = true; }
       go.disabled = true;
@@ -163,15 +192,15 @@
   }
   function evidenceTab() {
     var ev = c.evidence, r = c.reviewer;
-    var out = '<div class="rows">' + evidenceBlock('Profile', ev.profile, function (x) { return '<div class="mono small">' + CG.esc(x.id) + (x.specialty ? ' · ' + CG.esc(x.specialty) : '') + '</div>'; }) +
-      evidenceBlock('Invoice', ev.invoice, function (x) { return '<div class="mono small">' + CG.esc(x.id) + ' · ₹' + Number(x.amount_inr).toLocaleString('en-IN') + ' · ' + CG.esc(x.status) + ' · due ' + CG.esc(x.due_date) + '</div>'; }) +
-      evidenceBlock('System logs', ev.logs, function (x) { return '<div class="mono small">' + CG.esc(x.id) + ' · ' + CG.esc(x.system) + ' · ' + CG.esc(x.level) + '</div>'; }) +
-      evidenceBlock('JIRA', ev.jira, function (x) { return '<div class="mono small">' + CG.esc(x.id) + ' · ' + CG.esc(x.status) + '</div>'; }) +
+    var out = '<div class="rows">' + evidenceBlock('Profile', ev.profile, function (x) { return '<div class="small">' + CG.esc(x.id) + (x.specialty ? ' · ' + CG.esc(x.specialty) : '') + '</div>'; }) +
+      evidenceBlock('Invoice', ev.invoice, function (x) { return '<div class="small">' + CG.esc(x.id) + ' · ₹' + Number(x.amount_inr).toLocaleString('en-IN') + ' · ' + CG.esc(CG.human(x.status)) + ' · due ' + CG.esc(x.due_date) + '</div>'; }) +
+      evidenceBlock('System logs', ev.logs, function (x) { return '<div class="small">' + CG.esc(x.id) + ' · ' + CG.esc(CG.human(x.system)) + ' · ' + CG.esc(CG.human(x.level)) + '</div>'; }) +
+      evidenceBlock('JIRA', ev.jira, function (x) { return '<div class="small">' + CG.esc(x.id) + ' · ' + CG.esc(CG.human(x.status)) + '</div>'; }) +
       evidenceBlock('Runbook', ev.runbook, function (x) { return '<div class="small">' + CG.esc(x.id + ' · ' + x.title) + '</div>'; });
     if (CG.isRestricted(r)) return out + '<div class="row"><div class="label">Policies and past cases</div><div>' + CG.lock(r) + '</div></div></div>';
     var rows = r.citations_considered.map(function (x) {
       var stale = x.status === 'stale' || (x.version && x.current_version && x.version !== x.current_version);
-      return '<tr><td><a class="mono" href="' + CG.pageLink(x.page_id, x.version) + '">' + CG.esc(x.page_id + (x.version ? ' v' + x.version : '')) + '</a></td><td>' + CG.esc(x.page_type) + '</td><td>' + CG.esc(x.title) + '</td><td>' +
+      return '<tr><td class="nw"><a class="mono" href="' + CG.pageLink(x.page_id, x.version) + '">' + CG.esc(x.page_id + (x.version ? ' v' + x.version : '')) + '</a></td><td>' + CG.esc(CG.human(x.page_type)) + '</td><td>' + CG.esc(x.title) + '</td><td>' +
         (stale ? CG.tag('Stale', 'grey', 'used v' + x.version + ', current v' + x.current_version) : CG.tag(CG.human(x.status), 'green')) + '</td></tr>';
     }).join('');
     return out + '<div class="row"><div class="label">Policies and past cases</div><div>' + (rows ? '<table><tbody>' + rows + '</tbody></table>' : '<span class="muted">None.</span>') + '</div></div></div>';
@@ -194,7 +223,7 @@
   var HOT = { review_submitted: 1, precedent_saved: 1, communication_sent: 1, guard_blocked: 1, pr_opened: 1, pr_decided: 1 };
   function auditTab() {
     return '<div class="timeline">' + events.map(function (e) {
-      return '<div class="ev ' + (HOT[e.event] ? 'hot' : '') + '"><b>' + CG.esc(CG.eventName(e.event)) + '</b> <span class="small muted">' + CG.esc(CG.time(e.ts)) + ' · ' + CG.esc(e.actor_id) + '</span></div>';
+      return '<div class="ev ' + (HOT[e.event] ? 'hot' : '') + '"><b>' + CG.esc(CG.eventName(e.event)) + '</b> <span class="small muted">' + CG.esc(CG.time(e.ts)) + ' · ' + CG.esc(CG.userName(e.actor_id)) + '</span></div>';
     }).join('') + '</div>';
   }
   function messagesTab(box) {
@@ -202,16 +231,17 @@
     CG_API.get('/api/comms').then(function (all) {
       var mine = all.filter(function (m) { return m.case_id === c.id; });
       box.innerHTML = mine.length ? '<table><thead><tr><th>Channel</th><th>To</th><th>Message</th><th>Status</th></tr></thead><tbody>' + mine.map(function (m) {
-        return '<tr><td>' + CG.esc(m.channel) + '</td><td class="small mono">' + CG.esc(m.recipient) + '</td><td class="small">' + CG.esc(m.message) + '</td><td>' + (m.simulated ? CG.tag('Simulated', 'grey') : CG.tag(CG.human(m.status), 'green')) + '</td></tr>'; }).join('') + '</tbody></table>' :
+        return '<tr><td>' + CG.esc(CG.human(m.channel)) + '</td><td class="small">' + CG.esc(m.recipient) + '</td><td class="small">' + CG.esc(m.message) + '</td><td>' + (m.simulated ? CG.tag('Simulated', 'grey') : CG.tag(CG.human(m.status), 'green')) + '</td></tr>'; }).join('') + '</tbody></table>' :
         CG.empty('No messages yet. Approving the case with a channel selected sends one (simulated).');
     }).catch(function () { box.innerHTML = CG.empty('Could not load messages.'); });
   }
 
   function draw() {
     var lit = events.map(function (e) { return e.event; });
+    var tiers = c.reviewer && !CG.isRestricted(c.reviewer) ? c.reviewer.llm_tiers_used : null;
     el.innerHTML = '<div class="page-head"><a class="small" href="case.html">← All cases</a><div class="flex" style="margin-top:6px"><h1 class="mono">' + CG.esc(c.id) + '</h1><span style="font-size:18px;font-weight:600">' + CG.esc(CG.what(c.request_type)) + '</span>' +
       CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old · requested by ' + CG.esc(c.requester.name) + '</span></div></div>' +
-      '<div class="card" style="margin-bottom:16px">' + CG.pipeline(lit, -1) + '</div>' +
+      '<div class="card" style="margin-bottom:16px">' + CG.pipeline(lit, -1, null, tiers) + '</div>' +
       '<div class="grid g-case"><div class="card">' + rowsHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
       '<div class="tabs" role="tablist">' + [['evidence', 'Evidence'], ['graph', 'Graph'], ['audit', 'Audit timeline'], ['messages', 'Messages']].map(function (t) {
         return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('') + '</div><div class="card" id="tab-body"></div>';

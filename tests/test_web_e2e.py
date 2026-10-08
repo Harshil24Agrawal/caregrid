@@ -121,7 +121,7 @@ def test_every_page_loads_for_every_role_without_errors(web):
             p = web.go(path, sel)
             assert "Traceback" not in text(p), (uid, path)
         header = text(web.page, "header.topbar")
-        assert "LLM: mock" in header and "Demo login" in header and "Healthcare Operations Second Brain" in header
+        assert "LLM: Mock (offline)" in header and "PHI masked" in header and "Demo login" in header and "Healthcare Operations Second Brain" in header
         assert ("Reset demo" in header) == (uid in ("U3", "U4"))             # only ops managers and senior reviewers (DEMO_MODE=1)
         assert [a.inner_text() for a in web.page.query_selector_all("nav.navstrip a")] == ["Dashboard", "New request", "Cases", "Knowledge", "Audit"]
 
@@ -147,7 +147,7 @@ def test_s2_one_numbered_message_with_masked_chips(web):
     assert "Need 3 more details" in t and len(p.query_selector_all("#run ol li")) == 3 and "masked" in t.lower()
     assert "Ramesh" not in t and "Lake Road" not in t
     web.go("/case.html?case=" + case_id_of(p), "#decide")
-    assert "Provider Enrollment" in text(web.page)
+    assert "Effective date" in text(web.page, ".row:has(.label:text-is('Missing'))")
 
 
 def test_s3_conflict_and_s4_refusals(web):
@@ -182,14 +182,15 @@ def test_s5_decide_assistant_rbac_messages_and_amount(web):
     p.press("#ask-input", "Enter")
     p.wait_for_function("document.querySelectorAll('#chat .msg.bot').length >= 1 && !document.querySelector('#chat .spinner')", timeout=T)
     assert "ACCESS RESTRICTED" in text(p, "#chat") and "62,500" not in text(p)
-    assert p.query_selector("#go") is None and "cannot approve your own request" in text(p, "#decide")
-    assert "decides" in text(p, ".row:has-text('Why a human')") and text(p, ".row:has-text('Why a human')").count(".") == 1
+    assert p.query_selector("#go") is None and "Ops employees can't approve. A senior reviewer decides HIGH-risk cases." in text(p, "#decide")
+    why = text(p, ".row:has-text('Why a human')")
+    assert "must approve" in why and why.count(".") == 1
     # Rahul decides with e-mail + WhatsApp
     web.as_user("U4")
     p = web.go("/case.html?case=CASE-1024&decide=1", "#go")
-    assert not p.is_disabled("#go")
-    open_more(p)
-    p.check(".chan[value=email]")
+    assert p.is_disabled("#go") and p.query_selector("input[name=action]:checked") is None       # nothing pre-selected
+    p.check("input[value=approve]")
+    assert not p.is_disabled("#go") and p.is_checked(".chan[value=email]") and p.is_visible("#email")      # contact options open, Email ticked
     p.check(".chan[value=whatsapp]")
     p.fill("#email", "dme.desk@clinic-supplies.example")
     p.fill("#note", "Cost confirmed against the vendor quote.")
@@ -206,6 +207,10 @@ def test_s6_compounding_and_trust(web):
     cid = case_id_of(p)
     web.as_user("U2")
     p = web.go(f"/case.html?case={cid}&decide=1", "#go")
+    p.check("input[value=approve]")
+    p.click("#go")                                                       # Email is ticked but empty: blocked with a hint, nothing is sent
+    assert p.query_selector("#decision-result") is None and "Add a contact email" in text(p, "#toasts")
+    p.fill("#email", "enroll.desk@clinic.example")
     p.click("#go")
     p.wait_for_selector("#decision-result", timeout=T)
     prec = re.search(r"P-[0-9a-f]{6}", text(p, "#decision-result")).group(0)
@@ -221,14 +226,15 @@ def test_s7_pr_loop_in_the_browser(web):
     cid = case_id_of(p)
     web.as_user("U7")
     p = web.go(f"/case.html?case={cid}&decide=1", "#go")
-    open_more(p)
+    p.check("input[value=approve]")
+    p.fill("#email", "it.desk@clinic.example")
     p.check("#pr")
     p.select_option("#pr-target", "KA-32")
     p.check("#pr-retire")
     p.fill("#note", "KA-32 is superseded by KA-31; retire it.")
     p.click("#go")
     p.wait_for_selector("#decision-result", timeout=T)
-    assert "change request opened" in text(p, "#decision-result").lower()
+    assert "policy update suggested" in text(p, "#decision-result").lower()
     p = web.go("/knowledge.html?tab=prs", "#role-note")                    # Kiran (team specialist): the tab is not available for his role
     assert "not available for your role" in text(p) and p.query_selector("button[data-act=approve]") is None
     web.as_user("U5")
@@ -263,7 +269,7 @@ def test_knowledge_page_hides_admin_tabs_for_restricted_roles(web):
         web.as_user(uid)
         p = web.go("/knowledge.html", "#plist a")
         tabs = [b.inner_text() for b in p.query_selector_all("#tabs .tab")]
-        assert (tabs == ["Pages", "Needs attention", "Change requests"]) == admin, (uid, tabs)
+        assert (tabs == ["Pages", "Needs attention", "Policy updates"]) == admin, (uid, tabs)
         statuses = [o.inner_text() for o in p.query_selector_all("#f-status option")]
         assert ("Draft" in statuses) == admin
         listing = text(p, "#plist")
@@ -290,3 +296,32 @@ def test_reset_button_is_hidden_for_other_roles(web):
         web.as_user(uid)
         p = web.go("/index.html", ".kpi, .banner")
         assert p.query_selector("#reset-demo") is None, uid
+
+
+def test_dashboard_banner_depends_on_the_role(web):
+    web.as_user("U1")
+    banner = text(web.go("/index.html", ".banner"), ".banner")
+    assert banner.startswith("Your requests:") and "with reviewers" in banner and "need more details from you" in banner
+    web.as_user("U4")
+    banner = text(web.go("/index.html", ".banner"), ".banner")
+    assert "waiting for you to approve" in banner and "Review " in banner
+    web.as_user("U5")
+    banner = text(web.go("/index.html", ".banner"), ".banner")
+    assert "policy" in banner.lower() and ("conflict" in banner or "good shape" in banner)
+    web.as_user("U6")
+    banner = text(web.go("/index.html", ".banner"), ".banner")
+    assert "blocked" in banner.lower() or "denied" in banner.lower()
+    web.as_user("U1")
+    p = web.go("/index.html", ".banner")
+    assert int(p.inner_text("#phi-n")) > 0                                  # masked tokens exist, so the pill is never 0
+    assert "approvals in a row" in text(p) and "(10 needed)" in text(p)
+
+
+def test_needs_attention_shows_knowledge_problems_not_queue_items(web):
+    web.as_user("U5")
+    p = web.go("/index.html", ".banner")
+    att = text(p, ".att >> nth=0") + text(p, "#content")
+    assert "KA-31" in att and "KA-32" in att
+    assert "oldest waiting" in text(p).lower()
+    for n in p.query_selector_all(".att"):
+        assert n.get_attribute("href")
