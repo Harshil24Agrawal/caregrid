@@ -108,19 +108,17 @@ def cmd_lint() -> int:
 
 def cmd_reset() -> int:
     """Clean demo state: wipe SQLite, regenerate data, recompile the brain, then seed trust, ~20 historical cases and CASE-1024."""
-    from caregrid.knowledge.brain import Brain
-    from caregrid.llm import get_llm
-    from caregrid.seed import seed_all
-    from caregrid.store import SQLiteStore
+    from caregrid.admin import reset_demo
 
-    store = SQLiteStore()
-    store.wipe()
-    print(f"wiped {config.DB_PATH}")
-    cmd_data()
-    status = cmd_brain()
-    counts = seed_all(store, Brain(config.BRAIN_DIR), get_llm(), config.DATA_DIR)
-    print("seeded: " + ", ".join(f"{k}={v}" for k, v in counts.items()))
-    return status
+    result = reset_demo(echo=print)
+    print(f"compiled second brain in {config.BRAIN_DIR}")
+    for k, v in result["brain"].items():
+        print(f"  {k:<18}{v}")
+    print(f"leak scan findings: {len(result['leak_findings'])}")
+    for msg in result["leak_findings"]:
+        print(f"  PII_LEAK {msg}")
+    print("seeded: " + ", ".join(f"{k}={v}" for k, v in result["seeded"].items()))
+    return 1 if result["leak_findings"] else 0
 
 
 def cmd_demo() -> int:
@@ -133,8 +131,14 @@ def cmd_demo() -> int:
     if not (config.BRAIN_DIR / "index.md").exists():
         print("second_brain/ is empty: run `python -m caregrid.cli reset` first.")
         return 1
+    import shutil
+    import tempfile
+    from pathlib import Path
+
     print(f"LLM_PROVIDER={config.LLM_PROVIDER} EMBED_PROVIDER={config.EMBED_PROVIDER}\n")
-    return run_demo(SQLiteStore(":memory:"), Brain(config.BRAIN_DIR), get_llm(), config.DATA_DIR)
+    with tempfile.TemporaryDirectory() as tmp:       # S5/S6 write precedents: run on a COPY so the real second_brain/ is never touched
+        shutil.copytree(config.BRAIN_DIR, Path(tmp) / "brain")
+        return run_demo(SQLiteStore(":memory:"), Brain(Path(tmp) / "brain"), get_llm(), config.DATA_DIR)
 
 
 def main(argv: list[str] | None = None) -> int:

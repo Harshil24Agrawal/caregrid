@@ -238,6 +238,7 @@ class KnowledgePR(BaseModel):
 class Communication(BaseModel):
     id: str; case_id: str; channel: Channel; recipient: str
     message: str; status: Literal["simulated", "sent", "failed"]; ts: datetime
+    official_contacts: list[str] = []        # reviewer-provided OFFICIAL contacts allowed to appear in THIS record only (PII safety-net allowlist)
 
 class LintFinding(BaseModel):
     severity: Literal["error", "warning", "info"]
@@ -427,3 +428,37 @@ Two approved policies for the same request type with contradictory `meta.rule_ke
 | senior_reviewer | all cases: full | all risks |
 | knowledge_owner | pages, PRs, lint; cases: summary | PRs only |
 | auditor | all audit + cases: summary (read-only) | — |
+
+---
+
+## 13. Workflow API as built in Phase 5 (clarifications and deviations from sections 3, 8, 9, 12)
+
+```python
+# caregrid/rbac.py                      can_view(user, case, section) / can_approve(user, case) / visible_cases(user, store)
+# caregrid/workflow/decisions.py        submit_decision(d, store, brain, llm) -> Case
+#                                       raises KeyError (unknown case), PermissionError (rbac), AlreadyDecidedError(ValueError) (state), ValueError (bad input)
+# caregrid/workflow/trust.py            record_review(store, request_type, agreed, brain=None, case_id=None, actor=None) -> TrustRecord
+# caregrid/workflow/precedents.py       capture_precedent(case, d, brain) -> Precedent            (APPROVE / EDIT_APPROVE only)
+# caregrid/workflow/comms.py            send_communications(case, d, store) -> list[Communication]
+# caregrid/insights/metrics.py          dashboard_counts(store) / trust_overview(store) / queue_aging(store, now=None)
+#                                       gap_radar(store, brain=None, now=None) / cost_split(store)
+# caregrid/admin.py                     reset_demo(llm=None, brain=None, echo=None) -> dict
+```
+
+* **RBAC.** `can_view`: ops_employee = own cases, `summary` only; team_specialist = cases whose `assigned_team` is theirs, every section; ops_manager and
+  senior_reviewer = everything; knowledge_owner and auditor = every case, `summary` only. `can_approve`: team_specialist LOW + own team, ops_manager
+  LOW/MEDIUM, senior_reviewer any risk, others never; nobody approves a case they requested (separation of duties).
+* **Reviewable states.** `submit_decision` accepts IN_REVIEW **and ESCALATED** (an escalated case must be decidable by the senior it was escalated to; escalating
+  twice is rejected). ASK_REQUESTER is also accepted from NEEDS_INFO. Anything else raises `AlreadyDecidedError` (idempotent). Permission is checked before
+  state; a denied call writes `review_denied` and changes nothing.
+* **ASK_REQUESTER** needs `can_view(..., "full")` (not can_approve), is not a review (no trust update, no precedent) and uses the case's own one-shot questions,
+  or `note` as the single question when the case has none.
+* **Trust.** `record_review` takes optional `brain` (for the `never_auto` ceiling and workflow risk), `case_id` and `actor` (for the `trust_updated` audit event).
+* **Precedent facts** are exactly `derive_case_facts(workflow, classification, topic)` (section 10); `policy_id/version` = the top cited POLICY citation at its
+  current version. The Brain is updated in memory and on disk.
+* **Communication** gained `official_contacts: list[str]`, the explicit per-record PII allowlist. `Store.save_comm` re-masks everything else; `leak_scan_store`
+  honours the same list. `Store` gained `list_trust()`.
+* **Amounts** in a requester message come only from `billing.csv` (invoices in `case.related["invoice"]`); any rupee amount in model/reviewer text is replaced by
+  `[amount omitted]`.
+* **Metrics.** `gap_radar` rows: `request_type, reason_code, topic, count, avg_hours_in_queue, est_hours_saved`, with `est_hours_saved = count * avg_hours_in_queue`
+  (hours-in-state of the OPEN cases in the row; portfolio average when the row has none).

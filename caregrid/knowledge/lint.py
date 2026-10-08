@@ -86,26 +86,36 @@ def _hotspots(brain, store: Store | None) -> list[LintFinding]:
     if not items:
         return []
 
-    corpus = [set(tokenize(p.summary)) for p in brain.precedents()] or [set()]
+    out: list[LintFinding] = []
+    for rt, topic, refs in topic_clusters(items, [p.summary for p in brain.precedents()], HOTSPOT_MIN):
+        drafts = [p.id for p in brain.all_pages() if p.type == PageType.POLICY and p.status == PageStatus.DRAFT
+                  and topic in tokenize(p.title + " " + p.body)]
+        note = f" Only draft {', '.join(drafts)} exists." if drafts else ""
+        out.append(LintFinding(
+            severity="warning", code="ESCALATION_HOTSPOT", page_ids=refs,
+            message=f"{len(refs)} POLICY_GAP escalations for {rt} about '{topic}' ({', '.join(refs[:3])}...). "
+                    f"No approved article covers it.{note} Consider drafting one."))
+    return out
+
+
+def topic_clusters(items: list[tuple[str, str, str]], corpus_texts: list[str], min_items: int) -> list[tuple[str, str, list[str]]]:
+    """Cluster (request_type, text, ref) items by topic token, per request type. A topic is the token that covers the most
+    items, weighted by how rare it is across `corpus_texts` (so 'telehealth' beats 'provider'). Returns (request_type, topic, refs)
+    for every cluster with >= min_items items; items left over are not returned."""
+    corpus = [set(tokenize(t)) for t in corpus_texts] or [set()]
     df = Counter(t for toks in corpus for t in toks)
     n_docs = len(corpus)
-    out: list[LintFinding] = []
+    out: list[tuple[str, str, list[str]]] = []
     for rt in sorted({i[0] for i in items}):
         remaining = {ref: set(tokenize(text)) for r, text, ref in items if r == rt}
-        while len(remaining) >= HOTSPOT_MIN:
+        while len(remaining) >= min_items:
             cover = Counter(t for toks in remaining.values() for t in toks)
-            scored = [(c * math.log((n_docs + 1) / (df.get(t, 0) + 1)), c, t) for t, c in cover.items() if c >= HOTSPOT_MIN]
+            scored = [(c * math.log((n_docs + 1) / (df.get(t, 0) + 1)), c, t) for t, c in cover.items() if c >= min_items]
             if not scored:
                 break
-            _, count, topic = max(scored, key=lambda x: (x[0], x[2]))
+            _, _, topic = max(scored, key=lambda x: (x[0], x[2]))
             refs = sorted(r for r, toks in remaining.items() if topic in toks)
-            drafts = [p.id for p in brain.all_pages() if p.type == PageType.POLICY and p.status == PageStatus.DRAFT
-                      and topic in tokenize(p.title + " " + p.body)]
-            note = f" Only draft {', '.join(drafts)} exists." if drafts else ""
-            out.append(LintFinding(
-                severity="warning", code="ESCALATION_HOTSPOT", page_ids=refs,
-                message=f"{count} POLICY_GAP escalations for {rt} about '{topic}' ({', '.join(refs[:3])}...). "
-                        f"No approved article covers it.{note} Consider drafting one."))
+            out.append((rt, topic, refs))
             for r in refs:
                 remaining.pop(r)
     return out
