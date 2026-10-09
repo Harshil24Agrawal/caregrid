@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from caregrid import health_id
+from caregrid import config, health_id
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.lint import lint
 from caregrid.llm import LLM, pace
@@ -24,6 +24,7 @@ from caregrid.seed import load_users, seed_demo_case, seed_trust
 from caregrid.store import Store
 from caregrid.workflow import patients as patients_mod
 from caregrid.workflow.decisions import submit_decision
+from caregrid.workflow.forwarding import forward_case
 from caregrid.workflow.prs import decide_pr
 
 RAW_SECRETS = {
@@ -73,6 +74,15 @@ def _has_event(store: Store, case: Case, name: str) -> bool:
 
 
 def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[Scenario]:
+    """The scenarios always run with the real routing (a requester confirms the handoff), whatever the process default is."""
+    previous, config.REQUIRE_CONFIRMATION = config.REQUIRE_CONFIRMATION, True
+    try:
+        return _run_scenarios(store, brain, llm, data_dir)
+    finally:
+        config.REQUIRE_CONFIRMATION = previous
+
+
+def _run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[Scenario]:
     users = load_users(data_dir)
     asha = users["U1"]
     out: list[Scenario] = []
@@ -197,8 +207,13 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("policy 15 + precedent 0 + fields 20 + clarity 15 + no_conflict 10",
          c.confidence.breakdown == {"policy": 15, "precedent": 0, "fields": 20, "clarity": 15, "no_conflict": 10}),
         ("60, Medium", c.confidence.score == 60 and c.confidence.band.value == "medium"),
-        ("human, IN_REVIEW", c.routing == "human" and c.state == State.IN_REVIEW),
+        ("human, waiting for Asha to confirm the handoff (PROPOSED)", c.routing == "human" and c.state == State.PROPOSED),
         ("no PII in stored text", not any(s in blob for s in RAW_SECRETS["S6"]))])
+    sent = forward_case(c.id, asha, "Documents are attached.", store)
+    add("S6.0", "Asha confirms the handoff", sent, [
+        ("forwarded by Asha with her (masked) note, now IN_REVIEW", sent.state == State.IN_REVIEW and sent.forwarded_by == "Asha" and sent.forward_note == "Documents are attached."),
+        ("audit: forwarded (actor = requester)", any(e.event == "forwarded" and e.actor_id == asha.id for e in store.list_audit(sent.id))),
+        ("a forward is not a review: no trust change", store.get_trust("provider_name_change").total_reviews == 0)])
     first = c
 
     # ---- S6.2: Vikram approves it; a similar request (SAME Brain instance) now compounds
@@ -218,11 +233,11 @@ def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[
         ("cites the new precedent id", bool(learned) and learned[0].id in [x.page_id for x in c.proposal.citations]),
         ("trust record: provider_name_change consecutive == 1, level 0",
          trust.consecutive_agreements == 1 and trust.total_reviews == 1 and trust.level == 0),
-        ("stays human (trust level 0), IN_REVIEW", c.routing == "human" and c.trust_level == 0 and c.state == State.IN_REVIEW),
+        ("stays human (trust level 0), waiting for Asha to confirm", c.routing == "human" and c.trust_level == 0 and c.state == State.PROPOSED),
         ("no PII in stored text", not any(s in blob for s in RAW_SECRETS["S6b"]))])
     # ---- S7: the knowledge loop - Kiran proposes retiring the contradicting policy, Meera approves, the contradiction disappears
     kiran, meera = users["U7"], users["U5"]
-    conflict_case = go(S3, asha)
+    conflict_case = forward_case(go(S3, asha).id, asha, "", store)
     contradiction = lambda: [f for f in lint(brain) if f.code == "CONTRADICTION" and "KA-32" in f.page_ids]   # noqa: E731
     had_contradiction = bool(contradiction())
     decided = submit_decision(

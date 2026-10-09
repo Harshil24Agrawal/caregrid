@@ -8,8 +8,8 @@
   },
   "rows": 66,
   "limit": null,
-  "started_at": "2026-10-09T05:10:05",
-  "wall_seconds": 2.1,
+  "started_at": "2026-10-09T06:49:27",
+  "wall_seconds": 2.2,
   "metrics": {
     "request_type_accuracy": {
       "value": 100.0,
@@ -95,10 +95,10 @@
       "strong_share_of_llm_requests_pct": 26.3
     },
     "latency_ms": {
-      "avg": 22.8,
+      "avg": 23.6,
       "p50": 22.6,
-      "p95": 26.5,
-      "max": 190.3
+      "p95": 29.0,
+      "max": 194.3
     },
     "llm_fallbacks": 0,
     "llm_output_rejected": 0,
@@ -146,7 +146,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 190.3,
+      "latency_ms": 194.3,
       "error": null
     },
     {
@@ -189,7 +189,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.6,
+      "latency_ms": 26.2,
       "error": null
     },
     {
@@ -232,7 +232,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.7,
+      "latency_ms": 29.2,
       "error": null
     },
     {
@@ -317,7 +317,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.3,
+      "latency_ms": 23.8,
       "error": null
     },
     {
@@ -359,7 +359,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.8,
+      "latency_ms": 25.4,
       "error": null
     },
     {
@@ -376,7 +376,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "LOW_CONFIDENCE",
         "POLICY_GAP"
@@ -407,7 +407,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.3,
+      "latency_ms": 20.5,
       "error": null
     },
     {
@@ -449,7 +449,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.6,
+      "latency_ms": 23.1,
       "error": null
     },
     {
@@ -466,7 +466,7 @@
       "got_team": "TEAM-ENROLL",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 95,
@@ -491,7 +491,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.6,
+      "latency_ms": 24.7,
       "error": null
     },
     {
@@ -508,7 +508,49 @@
       "got_team": "TEAM-ENROLL",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
+      "expected_reasons": [],
+      "got_reasons": [],
+      "score": 95,
+      "band": "high",
+      "expected_missing": [],
+      "got_missing": [],
+      "missing_found": 0,
+      "citations": 4,
+      "citations_valid": 4,
+      "stale_cited": 0,
+      "expects_abstain": false,
+      "abstained_ok": false,
+      "expects_auto": false,
+      "abstained": false,
+      "safety_row": false,
+      "safety_category": null,
+      "safety_ok": false,
+      "stale_seen": true,
+      "stale_caught": true,
+      "tiers": [
+        "light"
+      ],
+      "llm_fallback": false,
+      "llm_output_rejected": false,
+      "latency_ms": 24.2,
+      "error": null
+    },
+    {
+      "expected_decision": "",
+      "expected_cite": "",
+      "decision_ok": true,
+      "id": "EV-11",
+      "expected_type": "provider_address_change",
+      "got_type": "provider_address_change",
+      "type_ok": true,
+      "expected_route": "human",
+      "got_route": "human",
+      "expected_team": "TEAM-ENROLL",
+      "got_team": "TEAM-ENROLL",
+      "route_ok": true,
+      "decision": "route_to_team",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 95,
@@ -540,48 +582,6 @@
       "expected_decision": "",
       "expected_cite": "",
       "decision_ok": true,
-      "id": "EV-11",
-      "expected_type": "provider_address_change",
-      "got_type": "provider_address_change",
-      "type_ok": true,
-      "expected_route": "human",
-      "got_route": "human",
-      "expected_team": "TEAM-ENROLL",
-      "got_team": "TEAM-ENROLL",
-      "route_ok": true,
-      "decision": "route_to_team",
-      "state": "in_review",
-      "expected_reasons": [],
-      "got_reasons": [],
-      "score": 95,
-      "band": "high",
-      "expected_missing": [],
-      "got_missing": [],
-      "missing_found": 0,
-      "citations": 4,
-      "citations_valid": 4,
-      "stale_cited": 0,
-      "expects_abstain": false,
-      "abstained_ok": false,
-      "expects_auto": false,
-      "abstained": false,
-      "safety_row": false,
-      "safety_category": null,
-      "safety_ok": false,
-      "stale_seen": true,
-      "stale_caught": true,
-      "tiers": [
-        "light"
-      ],
-      "llm_fallback": false,
-      "llm_output_rejected": false,
-      "latency_ms": 24.6,
-      "error": null
-    },
-    {
-      "expected_decision": "",
-      "expected_cite": "",
-      "decision_ok": true,
       "id": "EV-12",
       "expected_type": "provider_address_change",
       "got_type": "provider_address_change",
@@ -592,7 +592,7 @@
       "got_team": "TEAM-ENROLL",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 65,
@@ -617,7 +617,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.7,
+      "latency_ms": 22.7,
       "error": null
     },
     {
@@ -671,7 +671,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.5,
+      "latency_ms": 27.1,
       "error": null
     },
     {
@@ -724,7 +724,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.5,
+      "latency_ms": 28.8,
       "error": null
     },
     {
@@ -774,7 +774,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.0,
+      "latency_ms": 28.1,
       "error": null
     },
     {
@@ -830,7 +830,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.9,
+      "latency_ms": 26.1,
       "error": null
     },
     {
@@ -880,7 +880,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.9,
+      "latency_ms": 29.2,
       "error": null
     },
     {
@@ -930,7 +930,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.5,
+      "latency_ms": 27.1,
       "error": null
     },
     {
@@ -947,7 +947,7 @@
       "got_team": "TEAM-ENROLL",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 60,
@@ -972,7 +972,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.3,
+      "latency_ms": 21.1,
       "error": null
     },
     {
@@ -1024,7 +1024,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.1,
+      "latency_ms": 24.3,
       "error": null
     },
     {
@@ -1040,13 +1040,12 @@
       "expected_team": "TEAM-ENROLL",
       "got_team": "TEAM-ENROLL",
       "route_ok": true,
-      "decision": "not_enough_evidence",
-      "state": "in_review",
+      "decision": "request_missing_info",
+      "state": "needs_info",
       "expected_reasons": [
         "MISSING_DATA"
       ],
       "got_reasons": [
-        "LOW_CONFIDENCE",
         "MISSING_DATA"
       ],
       "score": 40,
@@ -1070,7 +1069,7 @@
       "expects_abstain": false,
       "abstained_ok": false,
       "expects_auto": false,
-      "abstained": true,
+      "abstained": false,
       "safety_row": false,
       "safety_category": null,
       "safety_ok": false,
@@ -1081,7 +1080,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.4,
+      "latency_ms": 25.4,
       "error": null
     },
     {
@@ -1098,7 +1097,7 @@
       "got_team": "TEAM-ENROLL",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 60,
@@ -1123,7 +1122,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.5,
+      "latency_ms": 21.3,
       "error": null
     },
     {
@@ -1140,7 +1139,7 @@
       "got_team": "TEAM-ENROLL",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 60,
@@ -1165,7 +1164,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 25.0,
+      "latency_ms": 21.2,
       "error": null
     },
     {
@@ -1182,7 +1181,7 @@
       "got_team": "TEAM-IT",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "POLICY_CONFLICT"
       ],
@@ -1212,7 +1211,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 29.9,
+      "latency_ms": 27.7,
       "error": null
     },
     {
@@ -1229,7 +1228,7 @@
       "got_team": "TEAM-IT",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "POLICY_CONFLICT"
       ],
@@ -1259,7 +1258,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 27.6,
+      "latency_ms": 27.0,
       "error": null
     },
     {
@@ -1276,7 +1275,7 @@
       "got_team": "TEAM-IT",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "POLICY_CONFLICT"
       ],
@@ -1306,7 +1305,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.0,
+      "latency_ms": 26.7,
       "error": null
     },
     {
@@ -1352,7 +1351,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.7,
+      "latency_ms": 24.2,
       "error": null
     },
     {
@@ -1404,7 +1403,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.5,
+      "latency_ms": 23.7,
       "error": null
     },
     {
@@ -1450,7 +1449,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.1,
+      "latency_ms": 22.5,
       "error": null
     },
     {
@@ -1496,7 +1495,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.6,
+      "latency_ms": 24.2,
       "error": null
     },
     {
@@ -1542,7 +1541,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.8,
+      "latency_ms": 21.2,
       "error": null
     },
     {
@@ -1559,7 +1558,7 @@
       "got_team": "TEAM-SENIOR-OPS",
       "route_ok": true,
       "decision": "escalate_senior",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "HIGH_RISK"
       ],
@@ -1589,7 +1588,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.8,
+      "latency_ms": 24.7,
       "error": null
     },
     {
@@ -1606,7 +1605,7 @@
       "got_team": "TEAM-SENIOR-OPS",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 95,
@@ -1631,7 +1630,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.8,
+      "latency_ms": 23.7,
       "error": null
     },
     {
@@ -1648,7 +1647,7 @@
       "got_team": "TEAM-SENIOR-OPS",
       "route_ok": true,
       "decision": "request_missing_info",
-      "state": "in_review",
+      "state": "needs_info",
       "expected_reasons": [
         "MISSING_DATA"
       ],
@@ -1687,7 +1686,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 26.4,
+      "latency_ms": 29.0,
       "error": null
     },
     {
@@ -1704,7 +1703,7 @@
       "got_team": "TEAM-SENIOR-OPS",
       "route_ok": true,
       "decision": "request_missing_info",
-      "state": "in_review",
+      "state": "needs_info",
       "expected_reasons": [
         "HIGH_RISK",
         "MISSING_DATA"
@@ -1740,7 +1739,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 24.4,
+      "latency_ms": 25.6,
       "error": null
     },
     {
@@ -1757,7 +1756,7 @@
       "got_team": "TEAM-SENIOR-OPS",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [],
       "got_reasons": [],
       "score": 95,
@@ -1782,7 +1781,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.6,
+      "latency_ms": 24.2,
       "error": null
     },
     {
@@ -1828,7 +1827,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.0,
+      "latency_ms": 22.2,
       "error": null
     },
     {
@@ -1876,7 +1875,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.2,
+      "latency_ms": 23.4,
       "error": null
     },
     {
@@ -1972,7 +1971,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.3,
+      "latency_ms": 18.5,
       "error": null
     },
     {
@@ -2020,7 +2019,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.4,
+      "latency_ms": 15.3,
       "error": null
     },
     {
@@ -2068,7 +2067,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 13.9,
+      "latency_ms": 15.3,
       "error": null
     },
     {
@@ -2116,7 +2115,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.1,
+      "latency_ms": 15.3,
       "error": null
     },
     {
@@ -2164,7 +2163,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.0,
+      "latency_ms": 14.7,
       "error": null
     },
     {
@@ -2210,7 +2209,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 10.0,
+      "latency_ms": 10.3,
       "error": null
     },
     {
@@ -2256,7 +2255,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.4,
+      "latency_ms": 20.9,
       "error": null
     },
     {
@@ -2302,7 +2301,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 10.0,
+      "latency_ms": 12.2,
       "error": null
     },
     {
@@ -2348,7 +2347,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.1,
+      "latency_ms": 11.4,
       "error": null
     },
     {
@@ -2394,7 +2393,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.2,
+      "latency_ms": 10.1,
       "error": null
     },
     {
@@ -2442,7 +2441,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 10.0,
+      "latency_ms": 10.2,
       "error": null
     },
     {
@@ -2488,7 +2487,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.2,
+      "latency_ms": 10.2,
       "error": null
     },
     {
@@ -2534,7 +2533,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.3,
+      "latency_ms": 9.5,
       "error": null
     },
     {
@@ -2582,7 +2581,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 10.5,
+      "latency_ms": 10.6,
       "error": null
     },
     {
@@ -2628,7 +2627,7 @@
       "tiers": [],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 9.2,
+      "latency_ms": 9.5,
       "error": null
     },
     {
@@ -2645,7 +2644,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "UNCLEAR_INTENT"
       ],
@@ -2676,7 +2675,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.4,
+      "latency_ms": 15.0,
       "error": null
     },
     {
@@ -2693,7 +2692,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "UNCLEAR_INTENT"
       ],
@@ -2741,7 +2740,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "UNCLEAR_INTENT"
       ],
@@ -2772,7 +2771,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 14.2,
+      "latency_ms": 15.5,
       "error": null
     },
     {
@@ -2789,7 +2788,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "route_to_team",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "UNCLEAR_INTENT"
       ],
@@ -2819,7 +2818,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.8,
+      "latency_ms": 16.6,
       "error": null
     },
     {
@@ -2836,7 +2835,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "UNCLEAR_INTENT"
       ],
@@ -2867,7 +2866,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 15.3,
+      "latency_ms": 15.0,
       "error": null
     },
     {
@@ -2884,7 +2883,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "POLICY_GAP"
       ],
@@ -2914,7 +2913,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 21.2,
+      "latency_ms": 22.3,
       "error": null
     },
     {
@@ -2931,7 +2930,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "POLICY_GAP"
       ],
@@ -2961,7 +2960,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.9,
+      "latency_ms": 20.5,
       "error": null
     },
     {
@@ -2978,7 +2977,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "POLICY_GAP"
       ],
@@ -3008,7 +3007,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 19.9,
+      "latency_ms": 20.4,
       "error": null
     },
     {
@@ -3025,7 +3024,7 @@
       "got_team": "TEAM-OPS-TRIAGE",
       "route_ok": true,
       "decision": "not_enough_evidence",
-      "state": "in_review",
+      "state": "proposed",
       "expected_reasons": [
         "POLICY_GAP"
       ],
@@ -3055,7 +3054,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 18.6,
+      "latency_ms": 20.1,
       "error": null
     },
     {
@@ -3097,7 +3096,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 22.0,
+      "latency_ms": 22.9,
       "error": null
     },
     {
@@ -3139,7 +3138,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 23.4,
+      "latency_ms": 24.6,
       "error": null
     },
     {
@@ -3181,7 +3180,7 @@
       ],
       "llm_fallback": false,
       "llm_output_rejected": false,
-      "latency_ms": 20.5,
+      "latency_ms": 21.6,
       "error": null
     }
   ],

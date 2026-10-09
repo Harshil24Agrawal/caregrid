@@ -141,7 +141,12 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
     _to(store, case, State.CLASSIFIED)
     log(store, "classified", None, case_id, request_type=cls.request_type, llm_confidence=cls.llm_confidence,
         rules_type=cls.rules_type, model_used=cls.model_used, fields=sorted(cls.extracted_fields), howto=howto.id if howto else None)
+    return finish(case, cls, guard, howto, store, brain, llm, calls_before)
 
+
+def finish(case: Case, cls: Classification, guard, howto, store: Store, brain: Brain, llm: LLM, calls_before: tuple[int, int]) -> Case:
+    """Steps 3-10 (retrieve, rules, propose, verify, score, output guard, route, save). Also used when a requester adds the missing details:
+    the classification then carries the new fields and `guard` the validation of what was added."""
     # 3 retrieve
     ret = retrieve(brain, cls, guard.masked_text, llm)
     attach_howto(ret, brain, howto)
@@ -150,16 +155,16 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
         rules.notes.append("llm_fallback")
     ctx = build_context(ret, rules)
     case.citations_considered = [Citation(page_id=c.id, version=c.version, page_type=c.type, title=c.title) for c in ctx]
-    log(store, "context_assembled", None, case_id, workflow=ret.workflow.id if ret.workflow else None,
+    log(store, "context_assembled", None, case.id, workflow=ret.workflow.id if ret.workflow else None,
         team=ret.team.id if ret.team else None, context=[c.id for c in ctx], case_facts=ret.case_facts)
-    log(store, "policy_identified", None, case_id, linked=[f"{s.page.id}@v{s.page.version}" for s in ret.policies if s.linked],
+    log(store, "policy_identified", None, case.id, linked=[f"{s.page.id}@v{s.page.version}" for s in ret.policies if s.linked],
         searched=[f"{s.page.id}@v{s.page.version}" for s in ret.policies if not s.linked])
-    log(store, "precedent_identified", None, case_id,
+    log(store, "precedent_identified", None, case.id,
         active=[[s.precedent.id, s.similarity] for s in ret.precedents_active[:5]],
         stale=[s.precedent.id for s in ret.precedents_stale])
 
     # 4 rules (applied above, logged here to keep the audit order)
-    log(store, "rules_applied", None, case_id, risk=rules.risk.value, hard_override=rules.hard_override,
+    log(store, "rules_applied", None, case.id, risk=rules.risk.value, hard_override=rules.hard_override,
         missing=rules.missing_fields, invalid=sorted(rules.invalid_fields), conflicts=len(rules.conflicts),
         reason_codes=[c.value for c in rules.reason_codes])
 
@@ -168,14 +173,14 @@ def run(text: str, user: User, store: Store, brain: Brain, llm: LLM, channel: Ch
     proposal, issues = verify_citations(proposal, brain, context_ids(ret, rules))
     if DOWNGRADED in issues and ReasonCode.POLICY_GAP not in rules.reason_codes:
         rules.reason_codes = [*rules.reason_codes, ReasonCode.POLICY_GAP]
-    log(store, "proposal_generated", None, case_id, decision_code=proposal.decision_code.value, team=proposal.route_team,
+    log(store, "proposal_generated", None, case.id, decision_code=proposal.decision_code.value, team=proposal.route_team,
         model_used=proposal.model_used, notes=[n for n in rules.notes if n.startswith("llm_")])
-    log(store, "citations_verified", None, case_id,
+    log(store, "citations_verified", None, case.id,
         kept=[f"{c.page_id}" + (f"@v{c.version}" if c.version else "") for c in proposal.citations], issues=issues)
 
     # 7 score (deterministic)
     conf = score(cls, ret, rules, proposal)
-    log(store, "confidence_scored", None, case_id, score=conf.score, band=conf.band.value, breakdown=conf.breakdown)
+    log(store, "confidence_scored", None, case.id, score=conf.score, band=conf.band.value, breakdown=conf.breakdown)
     case.rules, case.proposal, case.confidence = rules, proposal, conf
     _to(store, case, State.PROPOSED)
 

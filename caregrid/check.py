@@ -23,7 +23,7 @@ from caregrid.models import Case
 from caregrid.seed import load_users, seed_trust
 from caregrid.store import SQLiteStore, Store
 
-_TIME_KEYS = {"created_at", "state_history", "ts", "updated_at", "decided_at"}
+_TIME_KEYS = {"created_at", "state_history", "ts", "updated_at", "decided_at", "forwarded_at"}
 _ISO = re.compile(r"\d{4}-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?")
 NEVER_CITED = (("KA-60", None), ("KA-12", 2))         # (page id, version or None = any): a draft and an expired version
 
@@ -100,6 +100,26 @@ def _pytest_summary() -> tuple[bool, str]:
     return proc.returncode == 0, (lines[-1] if lines else "no pytest output") + (f"; {', '.join(failed[:5])}" if failed else "")
 
 
+def state_rule_violations(store) -> list[str]:
+    """A1: a case's state always matches its rules. NEEDS_INFO means something is missing or invalid (and says what to send); a case with
+    something missing never sits answered / proposed / in review (unless a safety override sent it straight to a person)."""
+    from caregrid.models import State
+    from caregrid.workflow.routing import safety_override
+
+    out = []
+    for c in store.list_cases():
+        bad = bool(c.rules and (c.rules.missing_fields or c.rules.invalid_fields))
+        if c.state == State.NEEDS_INFO and not bad:
+            out.append(f"{c.id}: needs_info but nothing is missing")
+        if c.state == State.NEEDS_INFO and not (c.proposal and c.proposal.questions_for_requester):
+            out.append(f"{c.id}: needs_info but there is nothing to ask for")
+        if bad and c.state in (State.PROPOSED, State.ANSWERED, State.READY):
+            out.append(f"{c.id}: {c.state.value} with missing or invalid fields")
+        if bad and c.state == State.IN_REVIEW and not safety_override(c) and not c.forwarded_by and c.classification and c.classification.model_used != "seed":
+            out.append(f"{c.id}: in review with missing or invalid fields")
+    return out
+
+
 def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) -> int:
     from caregrid.admin import reset_demo
     from caregrid.demo import run_scenarios
@@ -150,8 +170,12 @@ def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) ->
     item("every case: request_received -> final-state audit", not gaps,
          f"{total} cases checked" + (f"; {len(gaps)} gap(s), e.g. {gaps[:3]}" if gaps else ""))
 
+    bad_state = [f"{label}/{v}" for label, st, _ in groups for v in state_rule_violations(st)]
+    item("state matches rules in every case (needs_info <=> something missing)", not bad_state,
+         f"{total} cases checked" + (f"; {len(bad_state)} violation(s), e.g. {bad_state[:3]}" if bad_state else ""))
+
     failed = [s.key for s in scenarios if not s.passed]
-    item("demo 11/11 on mock", not failed and len(scenarios) == 11, f"{len(scenarios) - len(failed)}/{len(scenarios)} scenarios passed"
+    item("demo 12/12 on mock", not failed and len(scenarios) == 12, f"{len(scenarios) - len(failed)}/{len(scenarios)} scenarios passed"
          + (f"; FAILED {failed}" if failed else ""))
 
     # 7 API smoke (read-only on the clean demo state): auth, RBAC and the amount rule through HTTP

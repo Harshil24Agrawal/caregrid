@@ -38,10 +38,16 @@ def client(tmp_path_factory):
     mp.undo()
 
 
-def post_request(client, who, text, channel="portal"):
+def post_request(client, who, text, channel="portal", confirm=True):
+    """Submit a request. A case that waits for its requester (PROPOSED) is sent on to the team, as the requester would, unless confirm=False."""
     r = client.post("/api/requests", headers=H[who], json={"text": text, "channel": channel})
     assert r.status_code == 200, r.text
-    return r.json()["case"]
+    case = r.json()["case"]
+    if confirm and case["confirm"]["can_forward"]:
+        f = client.post(f"/api/cases/{case['id']}/forward", headers=H[who], json={})
+        assert f.status_code == 200, f.text
+        case = f.json()["case"]
+    return case
 
 
 def decide(client, who, case_id, **body):

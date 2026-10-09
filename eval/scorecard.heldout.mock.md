@@ -1,6 +1,6 @@
 # CareGrid evaluation scorecard
 
-30 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-09T04:49:19.
+30 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-09T06:49:44.
 
 | Metric | Result |
 |---|---|
@@ -19,7 +19,7 @@
 | safety / sensitive | 100.0%  (2/2) |
 | Stale-precedent catches | 3 caught / 3 retrieved; stale cited: 0 |
 | LLM use: none / light only / light + strong | 13.3% / 70.0% / 16.7%  (strong = 19.2% of LLM requests) |
-| Latency per request (avg / p50 / p95 / max) | 27.0 / 22.5 / 29.1 / 214.1 ms |
+| Latency per request (avg / p50 / p95 / max) | 25.7 / 21.4 / 28.3 / 195.9 ms |
 | LLM fallbacks / rejected outputs / row errors | 0 / 0 / 0 |
 | PII findings in the store after the run | 0 |
 | **Adjudicated** (HO-12, HO-13, HO-15, HO-16; see `heldout_adjudication.csv`) | |
@@ -37,7 +37,7 @@
 | safety / sensitive | 100.0%  (2/2) |
 | Stale-precedent catches | 3 caught / 3 retrieved; stale cited: 0 |
 | LLM use: none / light only / light + strong | 13.3% / 70.0% / 16.7%  (strong = 19.2% of LLM requests) |
-| Latency per request (avg / p50 / p95 / max) | 27.0 / 22.5 / 29.1 / 214.1 ms |
+| Latency per request (avg / p50 / p95 / max) | 25.7 / 21.4 / 28.3 / 195.9 ms |
 | LLM fallbacks / rejected outputs / row errors | 0 / 0 / 0 |
 | PII findings in the store after the run | 0 |
 

@@ -55,9 +55,13 @@ def seed_historical_cases(store: Store, data_dir: Path) -> int:
             masked_text=seed["text"], state=final, state_history=history,
             classification=Classification(request_type=rtype, llm_confidence=0.9, rules_type=rtype, extracted_fields=seed["fields"],
                                           model_used="seed"),
-            rules=RuleResult(risk=risk, route_team=seed["assigned_team"], approver_role=APPROVER_BY_RISK[risk]),
-            proposal=Proposal(decision_code=DecisionCode.ROUTE_TO_TEAM, route_team=seed["assigned_team"],
-                              answer_text="Seeded historical case.", summary_for_reviewer="Seeded historical case for queue ageing."),
+            rules=RuleResult(risk=risk, route_team=seed["assigned_team"], approver_role=APPROVER_BY_RISK[risk],
+                             required_fields=["effective_date"] if final == State.NEEDS_INFO else [],
+                             missing_fields=["effective_date"] if final == State.NEEDS_INFO else []),     # NEEDS_INFO always means something is missing
+            proposal=Proposal(decision_code=DecisionCode.REQUEST_MISSING_INFO if final == State.NEEDS_INFO else DecisionCode.ROUTE_TO_TEAM,
+                              route_team=seed["assigned_team"], answer_text="Seeded historical case.",
+                              questions_for_requester=(["Please provide the effective date (format: YYYY-MM-DD)."] if final == State.NEEDS_INFO else []),
+                              summary_for_reviewer="Seeded historical case for queue ageing."),
             routing="human", assigned_team=seed["assigned_team"], approver_role=APPROVER_BY_RISK[risk], related=seed["related"])
         store.save_case(case)
         log(store, "request_received", case.requester, case.id, ts=created, channel=case.channel.value, pii_types=[], seeded=True)
@@ -77,6 +81,10 @@ def seed_demo_case(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> Case
     case.state_history = [(s, t - shift) for s, t in case.state_history]
     case.related = seed["related"]
     store.save_case(case)
+    from caregrid.workflow.forwarding import forward_case
+
+    if case.state == State.PROPOSED:                           # the requester confirms the handoff, as a real user would
+        case = forward_case(case.id, user, "Vendor quote attached; the cost is above the usual limit.", store)
     return case
 
 

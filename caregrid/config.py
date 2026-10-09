@@ -72,3 +72,7 @@ EVAL_DIR = ROOT / "eval"
 
 STORE_BACKEND = _str("STORE_BACKEND", "sqlite")  # sqlite | dynamodb (later)
 COMMS_EMAIL = _str("COMMS_EMAIL", "simulated")  # simulated | sns (later)
+
+# A human-routed case without a safety override waits for its requester to send it to the team (CONTRACTS section 8). "0" restores the
+# old behaviour (straight to review); only a few legacy unit tests use that.
+REQUIRE_CONFIRMATION = os.environ.get("REQUIRE_CONFIRMATION", "1") != "0"

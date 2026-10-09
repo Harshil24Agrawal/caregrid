@@ -44,6 +44,8 @@ from caregrid.reasoning.pipeline import run
 from caregrid.seed import load_users
 from caregrid.store import SQLiteStore
 from caregrid.workflow import assistant as assistant_mod
+from caregrid.workflow import details as details_mod
+from caregrid.workflow import forwarding as forwarding_mod
 from caregrid.workflow import patients as patients_mod
 from caregrid.workflow.audit import log as audit_log
 from caregrid.workflow.decisions import DECIDABLE, AlreadyDecidedError, submit_decision
@@ -112,6 +114,16 @@ async def _forbidden(_: Request, exc: PermissionError):
 
 @app.exception_handler(AlreadyDecidedError)
 async def _conflict(_: Request, exc: AlreadyDecidedError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(forwarding_mod.NotForwardableError)
+async def _not_forwardable(_: Request, exc: forwarding_mod.NotForwardableError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(details_mod.NotAwaitingDetailsError)
+async def _not_awaiting(_: Request, exc: details_mod.NotAwaitingDetailsError):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
@@ -276,6 +288,11 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
         "guidance": workflow_guidance(case, brain, store.list_audit(case.id)),
         "patient": patients_mod.case_patient(case, user, store, config.DATA_DIR),
         "story": story(case, brain, user),
+        "forwarded": ({"by": case.forwarded_by, "at": case.forwarded_at.isoformat() if case.forwarded_at else None, "note": case.forward_note}
+                      if case.forwarded_by else None),
+        "details_form": details_mod.form_for(case) if case.state == State.NEEDS_INFO and details_mod.can_add(user, case) else None,
+        "confirm": {"can_forward": case.state == State.PROPOSED and case.routing == "human" and forwarding_mod.can_confirm(user, case),
+                    "team": case.assigned_team, "approver_role": case.approver_role.value if case.approver_role else None},
         "actions": approval_gate(user, case),
     }
     if prop:
@@ -450,6 +467,49 @@ def api_decision(case_id: str, body: DecisionIn, user: User = Depends(actor)):
         "communications": [{"id": c.id, "channel": c.channel.value, "status": c.status} for c in store.list_comms(case_id)],
     }
     return {"case": case_detail(done, user, store, brain), "result": result}
+
+
+class DetailsIn(BaseModel):
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+@app.post("/api/cases/{case_id}/details")
+def api_add_details(case_id: str, body: DetailsIn, user: User = Depends(actor)):
+    """The requester (or an ops manager) sends exactly the missing / invalid fields. Raw values are guarded, masked and never stored; the rules,
+    score and route run again. Audit `details_added` holds field names only."""
+    store, brain, llm = get_store(), get_brain(), get_llm_client()
+    must_get_case(case_id, user, store)
+    try:
+        with _lock:
+            done = details_mod.add_details(case_id, user, body.values, store, brain, llm)
+    except ValueError as e:
+        if isinstance(e, details_mod.NotAwaitingDetailsError):
+            raise
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return {"case": case_detail(done, user, store, brain)}
+
+
+class ForwardIn(BaseModel):
+    note: str = Field(default="", max_length=500)
+
+
+@app.post("/api/cases/{case_id}/forward")
+def api_forward(case_id: str, body: ForwardIn, user: User = Depends(actor)):
+    """The requester confirms the handoff: PROPOSED -> IN_REVIEW (audit `forwarded`). Not a review: no trust update, no precedent."""
+    store, brain = get_store(), get_brain()
+    must_get_case(case_id, user, store)
+    with _lock:
+        done = forwarding_mod.forward_case(case_id, user, body.note, store)
+    return {"case": case_detail(done, user, store, brain)}
+
+
+@app.post("/api/cases/{case_id}/withdraw")
+def api_withdraw(case_id: str, user: User = Depends(actor)):
+    store, brain = get_store(), get_brain()
+    must_get_case(case_id, user, store)
+    with _lock:
+        done = forwarding_mod.withdraw_case(case_id, user, store)
+    return {"case": case_detail(done, user, store, brain)}
 
 
 class AssistantIn(BaseModel):

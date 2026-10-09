@@ -218,7 +218,7 @@ def paths(tmp_path, monkeypatch):
 
 def stable(case):
     d = json.loads(case.model_dump_json())
-    for k in ("created_at", "state_history", "id"):
+    for k in ("created_at", "state_history", "id", "forwarded_at"):
         d.pop(k, None)
     return d
 
@@ -271,13 +271,13 @@ def test_cli_demo_provider_switch(paths, monkeypatch, capsys):
 
     assert main(["demo"]) == 0                                                    # default = mock: the configured provider is never built
     out = capsys.readouterr().out
-    assert "LLM provider: mock (forced)" in out and "11/11 scenarios passed" in out and constructed == []
+    assert "LLM provider: mock (forced)" in out and "12/12 scenarios passed" in out and constructed == []
     assert main(["demo", "--provider", "mock"]) == 0 and constructed == []
     capsys.readouterr()
 
     assert main(["demo", "--provider", "env"]) == 0                               # env: whatever get_llm() returns
     out = capsys.readouterr().out
-    assert constructed == [1] and "LLM provider: env -> openai_compat" in out and "11/11 scenarios passed" in out
+    assert constructed == [1] and "LLM provider: env -> openai_compat" in out and "12/12 scenarios passed" in out
 
 
 def test_cli_demo_env_with_a_mock_config_says_so(paths, monkeypatch, capsys):

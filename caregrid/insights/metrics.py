@@ -12,7 +12,7 @@ from caregrid.knowledge.lint import topic_clusters
 from caregrid.models import Case, ReasonCode, State, TrustRecord
 from caregrid.store import Store
 
-OPEN_STATES = {State.IN_REVIEW, State.NEEDS_INFO, State.ESCALATED}     # waiting for a person (a queue)
+OPEN_STATES = {State.PROPOSED, State.IN_REVIEW, State.NEEDS_INFO, State.ESCALATED}     # waiting for a person (a queue)
 DONE_STATES = {State.APPROVED, State.ACTIONED, State.NOTIFIED, State.CLOSED, State.ANSWERED, State.REJECTED}
 
 
