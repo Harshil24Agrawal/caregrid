@@ -11,7 +11,7 @@ call has a 5-second timeout. Audit: alert_sent | alert_simulated | alert_failed,
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from caregrid.models import Case, Risk, State, User
 from caregrid.workflow.audit import log
@@ -48,16 +48,111 @@ def sla_hours() -> float:
         return 24.0
 
 
-def build(case: Case, trigger: str) -> tuple[str, str]:
-    """(subject, message). Subject at most 100 characters; no PII, amounts or Health ID."""
+IST = timezone(timedelta(hours=5, minutes=30))
+FULL_TYPE = {
+    "general_policy_question": "Policy question", "provider_address_change": "Provider address change", "provider_name_change": "Provider name change",
+    "portal_access_reset": "Portal access reset", "prior_auth_status": "Prior authorization status", "dme_equipment_request": "DME equipment request",
+    "claim_status_inquiry": "Claim status inquiry", "complaint_grievance": "Complaint", "unknown": "Unclassified request",
+}
+TEAM_FALLBACK = {"TEAM-SENIOR-OPS": "Senior Operations Review", "TEAM-ENROLL": "Provider Enrollment", "TEAM-IT": "IT Service Desk", "TEAM-CLAIMS": "Claims",
+                 "TEAM-UM": "Utilization Management", "TEAM-COMPLIANCE": "Compliance & Privacy", "TEAM-CLINICAL": "Clinical Review", "TEAM-OPS-TRIAGE": "Operations Triage"}
+ROLE_NAME = {"ops_employee": "Ops employee", "team_specialist": "Team specialist", "ops_manager": "Ops manager", "senior_reviewer": "Senior reviewer",
+             "knowledge_owner": "Knowledge owner", "auditor": "Auditor"}
+LABEL_WIDTH = 12
+FOOTER = ("This alert contains no patient data. Details are visible only inside CareGrid to authorised roles.\n"
+          "You receive this because you are subscribed to CareGrid critical alerts.")
+
+
+def ist(when: datetime) -> str:
+    """'09 Oct 2026, 10:12 IST' (a naive time is the server's local time)."""
+    return when.astimezone(IST).strftime("%d %b %Y, %H:%M") + " IST"
+
+
+def _team(team_id: str | None) -> str:
+    try:
+        from caregrid import config
+        from caregrid.knowledge.brain import Brain
+
+        page = Brain(config.BRAIN_DIR).team(team_id) if team_id else None
+        if page is not None:
+            return page.title
+    except Exception:
+        pass
+    return TEAM_FALLBACK.get(team_id or "", team_id or "the right team")
+
+
+def _hours_waiting(case: Case, now: datetime | None = None) -> int:
+    entered = next((ts for st, ts in reversed(case.state_history) if st == case.state), case.created_at)
+    return int(((now or datetime.now()) - entered).total_seconds() // 3600)
+
+
+def a_(kind: str) -> str:
+    """'a DME equipment request', 'an unclassified request', 'a provider address change' (acronyms keep their capitals)."""
+    phrase = kind if kind[:2].isupper() else kind[:1].lower() + kind[1:]
+    return ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
+
+
+def layout(subject: str, what: str, fields: list[tuple[str, str]], link: str | None) -> tuple[str, str]:
+    """The one fixed plain-text layout every alert uses (SNS e-mail is plain text: nothing is wrapped, labels are aligned with spaces)."""
+    lines = ["CareGrid alert \u2014 action needed", "=" * 30, "", "WHAT HAPPENED", what, ""]
+    lines += [f"{label:<{LABEL_WIDTH}}{value}" for label, value in fields]
+    if link:
+        lines += ["", "OPEN THE CASE", link]
+    lines += ["", "-" * 30, FOOTER]
+    return subject[:99], "\n".join(lines)
+
+
+def build(case: Case, trigger: str, now: datetime | None = None) -> tuple[str, str]:
+    """(subject, message): the same layout for every trigger, only the fields change. No personal data, amounts, Health ID or request text.
+    The subject is plain ASCII (SNS requires it) and under 100 characters."""
+    rules, prop = case.rules, case.proposal
     rtype = case.classification.request_type if case.classification else "unknown"
-    risk = (case.rules.risk.value if case.rules else "unknown").upper()
-    need = TRIGGERS[trigger][0]
-    if trigger == "sla":
-        need = f"waiting over {int(sla_hours())}h for review"
-    url = f"{os.environ.get('APP_URL', '').rstrip('/')}/case.html?case={case.id}"
-    subject = f"CareGrid alert: {case.id} {risk} risk"[:100]
-    return subject, f"CareGrid alert · {case.id} · {TYPE_NAME.get(rtype, 'Request')} · {risk} risk · {need} · {url}"
+    risk = (rules.risk.value if rules else "unknown").upper()
+    kind = FULL_TYPE.get(rtype, "Request")
+    reasons = {r.value for r in case.reason_codes}
+    threshold = any("threshold" in r.lower() for r in (rules.risk_reasons if rules else []))
+    policy = next((f"{c.page_id} v{c.version}" for c in (prop.citations if prop else []) if c.page_type.value == "policy"), None)
+    role = (case.approver_role.value if case.approver_role else "senior_reviewer")
+    needs = f"{ROLE_NAME.get(role, 'Senior reviewer')} approval"
+    hours = _hours_waiting(case, now)
+    lead = a_(kind)[:1].upper() + a_(kind)[1:]                                   # "A DME equipment request", "A complaint"
+    if trigger == "security":
+        severity, action = "SECURITY", "Blocked access attempt"
+        what, why, needs = ("A request that tried to override the rules or read protected data was blocked and routed to Compliance.",
+                            "Prompt-injection or access-denied pattern detected", "Compliance & Privacy review")
+    elif trigger == "critical":
+        clinical = "CLINICAL" in reasons
+        severity, action = "CRITICAL", "Clinical review needed" if clinical else "Senior review needed"
+        what = ("A medical question was routed to clinical review; it is never answered automatically." if clinical
+                else f"{lead} is critical risk and needs senior review.")
+        why = "Medical question (clinical safety rule)" if clinical else ("Legal wording in a sensitive complaint" if "SENSITIVE" in reasons else "Critical risk")
+        needs = "Clinical review" if clinical else "Senior reviewer approval"
+    elif trigger == "sla":
+        severity, action = "OVERDUE", f"Waiting {hours} h for review"
+        what = f"{lead} has been waiting {hours} hours for review."
+        why = f"In review longer than the {int(sla_hours())} h target"
+    else:                                                                        # approval
+        severity, action = ("CRITICAL" if risk == "CRITICAL" else "HIGH RISK"), "Senior approval needed"
+        what = f"{lead} is " + ("above the cost limit" if threshold else f"{risk.lower()} risk") + " and needs senior approval."
+        why = (f"Cost above the limit in policy {policy}" if threshold and policy else ("Cost above the limit" if threshold else f"{risk.title()} risk"))
+    when = case.forwarded_at if trigger == "approval" and case.forwarded_at else case.created_at
+    sender = ROLE_NAME.get(case.requester.role.value, "Requester") + (" (forwarded)" if case.forwarded_by and trigger == "approval" else "")
+    base = os.environ.get("APP_URL", "").strip().rstrip("/")
+    return layout(f"[CareGrid] {severity} | {case.id} | {action}", what,
+                  [("CASE", case.id), ("TYPE", kind), ("RISK", risk), ("TEAM", _team(case.assigned_team)), ("NEEDS", needs), ("WHY", why),
+                   ("SENT BY", f"{sender} \u00b7 {ist(when)}")],
+                  f"{base}/case.html?case={case.id}" if base else None)
+
+
+def test_message() -> tuple[str, str]:
+    """The sample `cli alerts test` sends: the exact layout with clearly fake fields."""
+    base = os.environ.get("APP_URL", "").strip().rstrip("/")
+    return layout("[CareGrid] TEST | Alert formatting check", "This is a test of the alert format. No case is involved.",
+                  [("CASE", "CASE-0000"), ("TYPE", "DME equipment request"), ("RISK", "HIGH"), ("TEAM", "Senior Operations Review"),
+                   ("NEEDS", "Senior reviewer approval"), ("WHY", "Cost above the limit in policy KA-40 v1"),
+                   ("SENT BY", f"Ops employee (forwarded) \u00b7 {ist(datetime.now())}")],
+                  f"{base}/case.html?case=CASE-0000" if base else None)
+
 
 
 def _client():
@@ -132,7 +227,7 @@ def send_test(store=None) -> tuple[str, str]:
     """Publish ONE test alert with the current configuration. Returns (status, line) where status is sent | simulated | failed and the line is
     exactly what `cli alerts test` prints: the MessageId, which setting is missing, or the error type and AWS error code (no secrets)."""
     gaps = missing()
-    subject, message = "CareGrid test alert", "CareGrid test alert · configuration check · no case, no personal data"
+    subject, message = test_message()
     details = {"trigger": "test", "target": "test alert", "topic": topic_name(_topic())}
     if gaps:
         if store is not None:

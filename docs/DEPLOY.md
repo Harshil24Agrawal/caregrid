@@ -60,3 +60,7 @@ Render (and any host) reads exactly these names from the environment; set the fi
 - **Reset and seeding never alert**, and leave no alert dedup entries. CASE-1024 is seeded already forwarded; to see a fresh approval alert, submit a new high-cost equipment request (for example the CASE-1024 text from the Demo guide) and forward it as Asha. One alert is sent per case per trigger.
 - SLA alerts are checked when the dashboard loads (at most once a minute) and by `python -m caregrid.cli alerts`; the seeded cases that have been in review over `ALERT_SLA_HOURS` will alert once on the first dashboard load of a fresh deployment.
 - The test suite, `cli demo`, `cli eval` and `cli check` never publish.
+
+## Alert e-mail format
+
+Every alert uses one fixed plain-text layout (subject `[CareGrid] <SEVERITY> | <CASE-ID> | <action>`, ASCII only because SNS requires it; body: WHAT HAPPENED, aligned CASE / TYPE / RISK / TEAM / NEEDS / WHY / SENT BY fields in IST, OPEN THE CASE link only when `APP_URL` is set, and a no-patient-data footer). `python -m caregrid.cli alerts test` and the Audit page button send a sample in this layout (`[CareGrid] TEST | Alert formatting check`).
