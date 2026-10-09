@@ -123,3 +123,106 @@ def test_cli_alerts_runs_the_sweep(client, monkeypatch, capsys):
 
     stub(monkeypatch, FakeSNS())
     assert main(["alerts"]) == 0 and "SLA sweep:" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ alerts fix: test command, seeding never alerts, startup line
+class AwsError(Exception):
+    def __init__(self, code):
+        super().__init__("raw AWS message that must never be printed")
+        self.response = {"Error": {"Code": code, "Message": "do not echo"}}
+
+
+def configure(monkeypatch, fake):
+    monkeypatch.setenv("ALERT_SNS_TOPIC_ARN", ARN)
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE0000000000")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret-example-value")
+    monkeypatch.setattr(alerts, "_client", lambda: fake)
+
+
+class IdSNS(FakeSNS):
+    def publish(self, **kw):
+        super().publish(**kw)
+        return {"MessageId": "11111111-2222-3333-4444-555555555555"}
+
+
+def test_send_test_prints_the_message_id(monkeypatch):
+    fake = IdSNS()
+    configure(monkeypatch, fake)
+    status, line = alerts.send_test()
+    assert (status, line) == ("sent", "sent (MessageId 11111111-2222-3333-4444-555555555555)") and len(fake.sent) == 1
+    assert "case.html" not in fake.sent[0]["Message"] and fake.sent[0]["Subject"] == "CareGrid test alert"
+
+
+def test_send_test_names_what_is_missing(monkeypatch):
+    for name in ("ALERT_SNS_TOPIC_ARN", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", "NUL")
+    monkeypatch.setenv("AWS_CONFIG_FILE", "NUL")
+    assert alerts.send_test()[1] == "simulated (missing ALERT_SNS_TOPIC_ARN, AWS_REGION, AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)"
+    monkeypatch.setenv("ALERT_SNS_TOPIC_ARN", ARN)
+    assert alerts.send_test()[1] == "simulated (missing AWS_REGION, AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)"
+    assert alerts.status_line() == "alerts: simulated (missing AWS_REGION, AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)"
+
+
+def test_send_test_failure_shows_the_error_type_and_aws_code_and_no_secrets(monkeypatch):
+    configure(monkeypatch, FakeSNS(fail=AwsError("AuthorizationError")))
+    status, line = alerts.send_test()
+    assert status == "failed" and line == "failed (AwsError, AWS error code AuthorizationError)"
+    assert "raw AWS" not in line and "do not echo" not in line and "secret-example" not in line and "AKID" not in line
+
+
+def test_startup_line_never_holds_a_secret(monkeypatch):
+    configure(monkeypatch, IdSNS())
+    line = alerts.status_line()
+    assert line == "alerts: SNS enabled (topic caregrid-alerts, region us-east-1)" and "AKID" not in line and "secret" not in line
+
+
+def test_cli_alerts_test_prints_exactly_one_line(monkeypatch, capsys):
+    from caregrid.cli import main
+
+    configure(monkeypatch, IdSNS())
+    assert main(["alerts", "test"]) == 0
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out == ["sent (MessageId 11111111-2222-3333-4444-555555555555)"]
+    configure(monkeypatch, FakeSNS(fail=AwsError("Throttling")))
+    assert main(["alerts", "test"]) == 1 and capsys.readouterr().out.strip() == "failed (AwsError, AWS error code Throttling)"
+
+
+def test_the_test_alert_endpoint_is_for_managers_and_senior_reviewers_in_demo_mode(client, monkeypatch):
+    configure(monkeypatch, IdSNS())
+    for who in ("rahul", "neha"):
+        r = client.post("/api/alerts/test", headers=H[who])
+        assert r.status_code == 200 and r.json() == {"status": "sent", "text": "sent (MessageId 11111111-2222-3333-4444-555555555555)"}
+    for who in ("asha", "vikram", "meera", "arjun", "kiran"):
+        assert client.post("/api/alerts/test", headers=H[who]).status_code == 404, who
+    monkeypatch.setenv("DEMO_MODE", "0")
+    assert client.post("/api/alerts/test", headers=H["rahul"]).status_code == 404
+
+
+def test_a_reset_publishes_nothing_and_leaves_no_alert_dedup_behind(tmp_path, monkeypatch):
+    from caregrid.admin import reset_demo
+    from caregrid.store import SQLiteStore
+
+    fake = IdSNS()
+    configure(monkeypatch, fake)
+    for name, val in (("DATA_DIR", tmp_path / "data"), ("BRAIN_DIR", tmp_path / "brain"), ("EVAL_DIR", tmp_path / "eval"), ("DB_PATH", tmp_path / "db.sqlite")):
+        monkeypatch.setattr(config, name, val)
+    api.reset_process_state()
+    reset_demo()
+    assert fake.sent == []                                                       # nothing published while seeding
+    store = SQLiteStore()
+    assert [e.event for e in store.list_audit() if e.event in alerts.ALERT_EVENTS] == []     # and no dedup entry for any seeded case
+    case = store.get_case("CASE-1024")
+    assert alerts.notify(case, "approval", store) == "sent" and len(fake.sent) == 1          # a live action gets a fresh, real alert
+    assert alerts.SUPPRESSED is False
+    api.reset_process_state()
+
+
+def test_demo_eval_and_check_runs_do_not_publish(monkeypatch):
+    from caregrid.scorecard import run_eval
+
+    fake = IdSNS()
+    configure(monkeypatch, fake)
+    run_eval("mock", limit=12)                                                   # includes clinical, injection and critical rows
+    assert fake.sent == [] and alerts.SUPPRESSED is False

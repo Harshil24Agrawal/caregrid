@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import logging
 import hmac
 import json
 import os
@@ -168,6 +169,7 @@ def api_health():
 @app.on_event("startup")
 def _first_start() -> None:
     """A fresh deployment (no database yet) seeds the demo state by itself."""
+    logging.getLogger("uvicorn.error").warning(alerts_mod.status_line())      # one line: SNS enabled, or what is missing (never a secret)
     if not Path(config.DB_PATH).exists() or not (Path(config.BRAIN_DIR) / "index.md").exists():
         from caregrid.admin import reset_demo
 
@@ -813,6 +815,16 @@ def api_pr_decision(pr_id: str, body: PRDecisionIn, user: User = Depends(actor))
 
 
 HOWTO_TEXT = "How do I change a provider's billing address?"
+
+
+@app.post("/api/alerts/test")
+def api_alerts_test(user: User = Depends(actor)):
+    """Publish ONE test alert with the current configuration (demo mode, ops manager or senior reviewer): sent (MessageId), simulated (which
+    setting is missing) or failed (error type and AWS error code). The case data is not involved and no secret is returned."""
+    if not demo_mode() or user.role not in RESET_ROLES:
+        raise HTTPException(status_code=404, detail="Not available.")
+    status, line = alerts_mod.send_test(get_store())
+    return {"status": status, "text": line}
 
 
 @app.get("/api/demo/guide")

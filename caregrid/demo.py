@@ -75,9 +75,12 @@ def _has_event(store: Store, case: Case, name: str) -> bool:
 
 def run_scenarios(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> list[Scenario]:
     """The scenarios always run with the real routing (a requester confirms the handoff), whatever the process default is."""
+    from caregrid import alerts
+
     previous, config.REQUIRE_CONFIRMATION = config.REQUIRE_CONFIRMATION, True
     try:
-        return _run_scenarios(store, brain, llm, data_dir)
+        with alerts.suppressed():                                 # the demo harness never publishes
+            return _run_scenarios(store, brain, llm, data_dir)
     finally:
         config.REQUIRE_CONFIRMATION = previous
 

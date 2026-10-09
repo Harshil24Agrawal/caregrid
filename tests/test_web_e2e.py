@@ -694,3 +694,14 @@ def test_every_dashboard_tile_and_banner_opens_a_list_with_exactly_that_many_row
         shown = int(re.search(r"\d+", p.inner_text("#see-all")).group(0))
         p.click("#see-all")
         assert rows_on_destination(web, p) == shown, (uid, "see all")
+
+
+def test_send_test_alert_button_on_the_audit_page(web):
+    web.as_user("U1")
+    p = web.go("/audit.html", "#table")
+    assert p.locator("#test-alert").count() == 0                                          # not for an ops employee
+    web.as_user("U4")
+    p = web.go("/audit.html", "#test-alert")
+    p.click("#test-alert")
+    p.wait_for_function("document.getElementById('test-alert-msg').textContent.startsWith('simulated (missing ')", timeout=T)   # the suite has no topic configured
+    assert "ALERT_SNS_TOPIC_ARN" in text(p, "#test-alert-msg")

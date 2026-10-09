@@ -112,7 +112,7 @@ def seed_historical_cases(store: Store, brain: Brain, llm: LLM, data_dir: Path) 
 
     users, prof = load_users(data_dir), _load(data_dir, "profiles.json")
     patients_seen = 0
-    alerts.SUPPRESSED = True
+    was_suppressed, alerts.SUPPRESSED = alerts.SUPPRESSED, True
     mode, config.REQUIRE_CONFIRMATION = config.REQUIRE_CONFIRMATION, True               # history is made with the real routing, whatever the process default is
     try:
         for i, (cid, who, kind, plan, hours) in enumerate(HISTORY):
@@ -138,7 +138,7 @@ def seed_historical_cases(store: Store, brain: Brain, llm: LLM, data_dir: Path) 
                                            store, brain, llm)
             store.shift_time(cid, timedelta(hours=hours))
     finally:
-        alerts.SUPPRESSED, config.REQUIRE_CONFIRMATION = False, mode
+        alerts.SUPPRESSED, config.REQUIRE_CONFIRMATION = was_suppressed, mode
     return len(HISTORY)
 
 

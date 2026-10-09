@@ -65,10 +65,92 @@ def _client():
     import boto3
     from botocore.config import Config
 
+    _clean_env()
     if boto3.Session().get_credentials() is None:
         return None
     return boto3.client("sns", region_name=os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"),
                         config=Config(connect_timeout=TIMEOUT_S, read_timeout=TIMEOUT_S, retries={"max_attempts": 0}))
+
+
+def _clean_env() -> None:
+    """An EMPTY AWS_PROFILE (some shells export it) makes botocore raise ProfileNotFound: treat it as unset."""
+    for name in ("AWS_PROFILE", "AWS_DEFAULT_PROFILE"):
+        if name in os.environ and not os.environ[name].strip():
+            del os.environ[name]
+
+
+def _region() -> str:
+    return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or ""
+
+
+def missing() -> list[str]:
+    """Names of the settings that stop a real alert from being sent (empty = SNS is enabled). Never a value."""
+    out = []
+    if not _topic():
+        out.append("ALERT_SNS_TOPIC_ARN")
+    if not _region():
+        out.append("AWS_REGION")
+    try:
+        import boto3
+
+        _clean_env()
+        if boto3.Session().get_credentials() is None:
+            out.append("AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY")
+    except ImportError:
+        out.append("boto3")
+    except Exception:                                                              # a broken profile / config: no usable credentials
+        out.append("AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY")
+    return out
+
+
+def status_line() -> str:
+    """One line for the startup log: whether alerts are real or simulated. Names and the topic NAME only, never a secret."""
+    gaps = missing()
+    return f"alerts: simulated (missing {', '.join(gaps)})" if gaps else f"alerts: SNS enabled (topic {topic_name(_topic())}, region {_region()})"
+
+
+def error_info(e: Exception) -> dict:
+    """The exception type and the AWS error code (if there is one). Never the message, which could echo a request."""
+    code = (getattr(e, "response", None) or {}).get("Error", {}).get("Code")
+    return {"error": type(e).__name__, **({"aws_code": code} if code else {})}
+
+
+class suppressed:
+    """`with alerts.suppressed():` nothing inside publishes or records an alert (seeding, reset, demo, eval and check runs)."""
+
+    def __enter__(self):
+        global SUPPRESSED
+        self.was, SUPPRESSED = SUPPRESSED, True
+
+    def __exit__(self, *exc):
+        global SUPPRESSED
+        SUPPRESSED = self.was
+        return False
+
+
+def send_test(store=None) -> tuple[str, str]:
+    """Publish ONE test alert with the current configuration. Returns (status, line) where status is sent | simulated | failed and the line is
+    exactly what `cli alerts test` prints: the MessageId, which setting is missing, or the error type and AWS error code (no secrets)."""
+    gaps = missing()
+    subject, message = "CareGrid test alert", "CareGrid test alert · configuration check · no case, no personal data"
+    details = {"trigger": "test", "target": "test alert", "topic": topic_name(_topic())}
+    if gaps:
+        if store is not None:
+            log(store, "alert_simulated", SYSTEM, None, **details)
+        return "simulated", f"simulated (missing {', '.join(gaps)})"
+    try:
+        client = _client()
+        if client is None:
+            raise RuntimeError("no client")
+        resp = client.publish(TopicArn=_topic(), Subject=subject, Message=message) or {}
+    except Exception as e:
+        info = error_info(e)
+        if store is not None:
+            log(store, "alert_failed", SYSTEM, None, **details, **info)
+        return "failed", "failed (" + info["error"] + (f", AWS error code {info['aws_code']}" if info.get("aws_code") else "") + ")"
+    if store is not None:
+        log(store, "alert_sent", SYSTEM, None, **details)
+    return "sent", f"sent (MessageId {resp.get('MessageId', 'unknown')})"
 
 
 def already_sent(store, case_id: str, trigger: str) -> bool:
@@ -99,7 +181,7 @@ def notify(case: Case, trigger: str, store) -> str:
         try:
             client.publish(TopicArn=arn, Subject=subject, Message=message)
         except Exception as e:                                                    # network, permission, throttling: the case carries on
-            log(store, "alert_failed", SYSTEM, case.id, error=type(e).__name__, **details)
+            log(store, "alert_failed", SYSTEM, case.id, **error_info(e), **details)
             return "failed"
         log(store, "alert_sent", SYSTEM, case.id, **details)
         return "sent"

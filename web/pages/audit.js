@@ -7,6 +7,14 @@
 
   el.innerHTML = '<div class="page-head"><h1>Audit</h1><p class="muted">Every important step is recorded. Details hold ids, codes and counts, never raw text. ' +
     (me.role === 'auditor' ? 'You can see every case (read-only).' : 'You see the cases visible to your role.') + '</p></div><div class="tabs" id="tabs" role="tablist"></div><div id="body"></div>';
+  if (CG.canReset()) {                                                       // demo mode, ops manager or senior reviewer
+    el.querySelector('.page-head').insertAdjacentHTML('beforeend', '<div style="margin-top:8px"><button class="btn sm" id="test-alert" type="button">Send test alert</button> <span class="small muted" id="test-alert-msg" role="status"></span></div>');
+    document.getElementById('test-alert').onclick = async function () {
+      var msg = document.getElementById('test-alert-msg');
+      msg.textContent = 'Sending…';
+      try { var r = await CG_API.post('/api/alerts/test', {}); msg.textContent = r.text; CG.toast(r.text, r.status === 'failed' ? 'error' : 'ok'); } catch (e) { msg.textContent = e.message; }
+    };
+  }
   var TABS = [['log', 'Log'], ['messages', 'Messages']];
   function drawTabs() {
     document.getElementById('tabs').innerHTML = TABS.map(function (t) { return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('');

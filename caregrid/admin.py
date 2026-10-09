@@ -14,6 +14,13 @@ from caregrid.store import SQLiteStore
 
 
 def reset_demo(llm: LLM | None = None, brain: Brain | None = None, echo: Callable[[str], None] | None = None) -> dict:
+    from caregrid import alerts
+
+    with alerts.suppressed():                                    # a reset never publishes, and leaves no alert dedup entries behind
+        return _reset_demo(llm, brain, echo)
+
+
+def _reset_demo(llm: LLM | None = None, brain: Brain | None = None, echo: Callable[[str], None] | None = None) -> dict:
     """Clean, repeatable demo state: wipe SQLite, regenerate the synthetic data, recompile the Second Brain, scan it for PII, then
     seed trust, ~20 historical cases and CASE-1024 (through the real pipeline).
 

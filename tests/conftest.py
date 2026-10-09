@@ -6,6 +6,8 @@ os.environ["LLM_PROVIDER"] = "mock"
 for _k in ("LLM_TIMEOUT_S", "LLM_TIMEOUT_LIGHT_S", "LLM_TIMEOUT_STRONG_S"):   # timeout tests must not depend on the caller's shell
     os.environ.pop(_k, None)
 os.environ["CAREGRID_TODAY"] = "2026-10-08"
+for _k in ("ALERT_SNS_TOPIC_ARN", "APP_ACCESS_CODE"):                        # a developer shell with a real topic must never receive alerts from the test suite
+    os.environ.pop(_k, None)
 
 
 import pytest  # noqa: E402

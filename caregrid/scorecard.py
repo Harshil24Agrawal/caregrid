@@ -221,6 +221,13 @@ def misses(card: dict, adjudicated: bool = False) -> list[dict]:
 
 
 def run_eval(provider: str = "mock", limit: int | None = None, echo=None, llm: LLM | None = None, csv_path: Path | None = None) -> dict:
+    from caregrid import alerts
+
+    with alerts.suppressed():                                    # an evaluation run never publishes an alert
+        return _run_eval(provider, limit, echo, llm, csv_path)
+
+
+def _run_eval(provider: str = "mock", limit: int | None = None, echo=None, llm: LLM | None = None, csv_path: Path | None = None) -> dict:
     from caregrid.cli import llm_for       # lazy: cli imports this module lazily too
 
     say = echo or (lambda _m: None)

@@ -189,6 +189,13 @@ def state_rule_violations(store) -> list[str]:
 
 
 def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) -> int:
+    from caregrid import alerts
+
+    with alerts.suppressed():                                    # the checklist never publishes an alert
+        return _run_check(echo, skip_pytest)
+
+
+def _run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) -> int:
     from caregrid.admin import reset_demo
     from caregrid.demo import run_scenarios
     from caregrid.ingest.leakscan import leak_scan, leak_scan_store
