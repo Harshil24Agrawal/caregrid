@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field, field_validator
 from caregrid import config
 from caregrid.insights import metrics
 from caregrid.insights.explain import case_summary, one_liner, workflow_guidance
+from caregrid.insights.story import bucket, next_short, problem_line, story
 from caregrid.insights.provenance import format_source, page_sections, provenance, source_for_citation
 from caregrid.insights.graph import case_graph
 from caregrid.knowledge.brain import Brain
@@ -159,6 +160,7 @@ def case_row(c: Case, user: User | None = None) -> dict:
         "approver_role": c.approver_role.value if c.approver_role else None, "age_hours": hours_since(c.created_at),
         "created_at": c.created_at.isoformat(), "reason_codes": [r.value for r in c.reason_codes], "requester": c.requester.name,
         "trust_level": c.trust_level, "summary": one_liner(c),
+        "problem": problem_line(c), "bucket": bucket(c, user) if user else None, "next_short": next_short(c, user) if user else None,
     }
 
 
@@ -273,6 +275,7 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
         "evidence": evidence(case, user, brain),
         "guidance": workflow_guidance(case, brain, store.list_audit(case.id)),
         "patient": patients_mod.case_patient(case, user, store, config.DATA_DIR),
+        "story": story(case, brain, user),
         "actions": approval_gate(user, case),
     }
     if prop:
@@ -613,6 +616,49 @@ def api_pr_decision(pr_id: str, body: PRDecisionIn, user: User = Depends(actor))
     except KeyError as e:
         raise HTTPException(status_code=404, detail="Unknown PR.") from e
     return scrub(pr_row(pr), user)
+
+
+HOWTO_TEXT = "How do I change a provider's billing address?"
+
+
+@app.get("/api/demo/guide")
+def api_demo_guide(user: User = Depends(actor)):
+    """Demo mode only. One card per scenario in demo order, with the exact sample texts the tests use (so they reproduce the expected results).
+    The S8 text holds a synthetic Health ID, which only an ops manager or a senior reviewer is given (as with /api/demo/samples)."""
+    if not demo_mode():
+        raise HTTPException(status_code=404, detail="Not available.")
+    from caregrid import demo as D, health_id
+
+    s8 = None
+    if user.role in RESET_ROLES:
+        member = next((m for m in health_id._members(config.DATA_DIR) if m.get("health_id")), None)
+        s8 = f"{D.S1} Patient {member['health_id']}." if member else None
+
+    def fill(label: str, who: str, text: str | None) -> dict:
+        return {"label": label, "act_as": who, "kind": "fill", "text": text}
+
+    def case_(label: str, who: str, cid: str) -> dict:
+        return {"label": label, "act_as": who, "kind": "case", "case": cid}
+
+    cards = [
+        {"key": "S1", "title": "S1 Trusted answer", "talk": "A policy question is answered automatically, with the cited policy and a High confidence.",
+         "buttons": [fill("Asha: fill the request", "U1", D.S1)]},
+        {"key": "HOWTO", "title": "How-to from a workflow", "talk": "A 'how do I' question is answered with the workflow's own steps, built by code, citing the workflow and its policy.",
+         "buttons": [fill("Asha: fill the request", "U1", HOWTO_TEXT)]},
+        {"key": "S2", "title": "S2 Missing details", "talk": "Personal data is masked, and every missing detail is asked for in one numbered message.",
+         "buttons": [fill("Asha: fill the request", "U1", D.S2)]},
+        {"key": "S5", "title": "S5 High-cost equipment (CASE-1024)", "talk": "A senior reviewer sees the whole story and approves; the requester sees the same case with the amount and evidence hidden.",
+         "buttons": [case_("Rahul: open CASE-1024", "U4", "CASE-1024"), case_("Asha: open the same case", "U1", "CASE-1024")]},
+        {"key": "S6", "title": "S6 The system learns", "talk": "A human-approved decision becomes a precedent, and the next similar request is scored higher.",
+         "buttons": [fill("Asha: fill name change 1", "U1", D.S6A), fill("Asha: fill name change 2", "U1", D.S6B)]},
+        {"key": "S7", "title": "S7 Conflict and policy fix", "talk": "Two policies disagree; a specialist proposes retiring one, the knowledge owner approves, and the conflict disappears.",
+         "buttons": [fill("Asha: fill the portal reset", "U1", D.S3), {"label": "Meera: policy updates", "act_as": "U5", "kind": "page", "href": "knowledge.html?tab=prs"}]},
+        {"key": "S8", "title": "S8 Health ID", "talk": "A valid CareGrid Health ID links the case to the patient's timeline; a wrong checksum is sent back to be re-checked.",
+         "buttons": [fill("Rahul: fill with a Health ID", "U4", s8), {"label": "Rahul: patients", "act_as": "U4", "kind": "page", "href": "patients.html"}]},
+        {"key": "S4", "title": "S4 Safety", "talk": "A medical question and a prompt-injection attempt are refused and routed to the right team.",
+         "buttons": [fill("Asha: medical question", "U1", D.S4A), fill("Asha: injection attempt", "U1", D.S4B)]},
+    ]
+    return {"cards": cards, "can_reset": user.role in RESET_ROLES}
 
 
 @app.get("/api/demo/samples")

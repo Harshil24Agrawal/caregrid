@@ -28,6 +28,7 @@
     counter.style.color = n > MAX ? 'var(--red)' : '';
     btn.disabled = ta.value.trim().length === 0 || n > MAX;
   }
+  try { var pre = window.sessionStorage.getItem('cg_prefill'); if (pre) { ta.value = pre; window.sessionStorage.removeItem('cg_prefill'); } } catch (e) { /* storage blocked */ }   // from the Demo guide: filled, never submitted
   ta.addEventListener('input', refresh);
   document.getElementById('examples').innerHTML = EXAMPLES.map(function (x, i) { return '<button type="button" class="chip" data-i="' + i + '">' + CG.esc(x[0]) + '</button>'; }).join('');
   CG.$$('#examples button').forEach(function (b) { b.onclick = function () { ta.value = EXAMPLES[+b.dataset.i][1]; refresh(); ta.focus(); }; });

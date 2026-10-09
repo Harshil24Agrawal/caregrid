@@ -16,25 +16,29 @@
 
   // ------------------------------------------------------------------ list
   function showList() {
-    var states = Array.from(new Set(list.map(function (c) { return c.state; })));
-    var start = CG.q('state') && states.indexOf(CG.q('state')) >= 0 ? CG.q('state') : '';
-    el.innerHTML = '<div class="page-head"><h1>Cases</h1><p class="muted">' + list.length + ' case' + (list.length === 1 ? '' : 's') + ' visible to ' + CG.esc(me.name) + ' (' + CG.esc(CG.role(me.role)) + ').</p></div>' +
-      '<div class="card"><div class="flex" style="margin-bottom:10px"><label class="small muted">Show <select id="f-state"><option value="">all</option>' + states.map(function (s) { return '<option value="' + CG.esc(s) + '"' + (s === start ? ' selected' : '') + '>' + CG.esc(CG.human(s)) + '</option>'; }).join('') + '</select></label></div>' +
-      '<div class="tablewrap"><table><thead><tr><th>Case</th><th>What</th><th>Summary</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody id="rows"></tbody></table></div></div>';
+    var base = CG.q('state') ? list.filter(function (c) { return c.state === CG.q('state'); }) : list;
+    var FILTERS = [['all', 'All'], ['action', 'Needs my action'], ['waiting', 'Waiting'], ['done', 'Done']];
+    var cur = FILTERS.some(function (f) { return f[0] === CG.q('show'); }) ? CG.q('show') : 'all';
+    var count = function (k) { return base.filter(function (c) { return k === 'all' || c.bucket === k; }).length; };
+    el.innerHTML = '<div class="page-head"><h1>Cases</h1><p class="muted">' + base.length + ' case' + (base.length === 1 ? '' : 's') + ' visible to ' + CG.esc(me.name) + ' (' + CG.esc(CG.role(me.role)) + ').</p></div>' +
+      '<div class="card"><div class="flex" style="margin-bottom:10px" id="filters" role="group" aria-label="Filter">' + FILTERS.map(function (f) {
+        return '<button type="button" class="chip' + (f[0] === cur ? ' on' : '') + '" data-f="' + f[0] + '" aria-pressed="' + (f[0] === cur) + '">' + f[1] + ' <span class="n">' + count(f[0]) + '</span></button>'; }).join('') + '</div>' +
+      '<div class="tablewrap"><table class="compact"><thead><tr><th>Case</th><th>Problem</th><th>Status</th><th>With</th><th>Next step</th><th>Age</th></tr></thead><tbody id="rows"></tbody></table></div></div>';
     function draw() {
-      var f = document.getElementById('f-state').value;
-      document.getElementById('rows').innerHTML = list.filter(function (c) { return !f || c.state === f; }).map(function (c) {
-        return '<tr class="click" data-id="' + CG.esc(c.id) + '"><td class="nw">' + CG.caseLink(c.id) + '</td><td class="nw">' + CG.esc(CG.shortWhat(c.request_type)) + '</td><td class="ellip small" title="' + CG.esc(c.summary) + '">' + CG.esc(c.summary) + '</td><td class="nw">' + CG.stateTag(c.state) + '</td><td class="nw">' + CG.riskTag(c.risk, true) +
-          '</td><td class="nw small">' + CG.esc(CG.team(c.team)) + '</td><td class="nw small">' + CG.esc(CG.age(c.age_hours)) + '</td></tr>';
-      }).join('') || '<tr><td colspan="7">' + CG.empty('No cases in this state.') + '</td></tr>';
+      document.getElementById('rows').innerHTML = base.filter(function (c) { return cur === 'all' || c.bucket === cur; }).map(function (c) {
+        return '<tr class="click" data-id="' + CG.esc(c.id) + '"><td class="nw">' + CG.caseLink(c.id) + '</td><td class="ellip" title="' + CG.esc(c.summary) + '"><div class="what">' + CG.esc(c.problem) + '</div><div class="subline">' + CG.esc(c.summary) + '</div></td>' +
+          '<td class="nw">' + CG.stateTag(c.state) + ' ' + CG.riskTag(c.risk, true) + '</td><td class="nw small" title="' + CG.esc(CG.team(c.team)) + '">' + CG.esc(CG.teamShort(c.team)) + (c.approver_role ? '<div class="muted">' + CG.esc(CG.role(c.approver_role)) + '</div>' : '') + '</td>' +
+          '<td class="nw small' + (c.bucket === 'action' ? ' strong' : '') + '">' + CG.esc(c.next_short) + '</td><td class="nw small">' + CG.esc(CG.age(c.age_hours)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="6">' + CG.empty('Nothing here. Try another filter.') + '</td></tr>';
       CG.$$('#rows tr.click').forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.tagName !== 'A') window.location.href = 'case.html?case=' + encodeURIComponent(tr.dataset.id); }; });
+      CG.$$('#filters .chip').forEach(function (b2) { b2.classList.toggle('on', b2.dataset.f === cur); b2.setAttribute('aria-pressed', String(b2.dataset.f === cur)); });
     }
-    document.getElementById('f-state').onchange = draw;
+    CG.$$('#filters .chip').forEach(function (b2) { b2.onclick = function () { cur = b2.dataset.f; draw(); }; });
     draw();
   }
 
   // ------------------------------------------------------------------ one case
-  var c, events = [], tab = 'evidence', lastResult = null, chat = [];
+  var c, events = [], tab = 'handled', lastResult = null, chat = [], whyOpen = false, detailsOpen = false;
 
   async function showCase(id) {
     try {
@@ -114,7 +118,29 @@
         '<span class="small muted">no source (nothing backs this part)</span>';
       return '<div class="prov"><div class="claim">' + CG.esc(e.claim) + '</div><div class="srcs">' + src + '</div></div>';
     }).join('');
-    return '<div class="card" id="why"><div class="card-title"><h2>Why this decision</h2><span class="small muted">claim → source</span></div>' + (rows || CG.empty('No sources recorded.')) + '</div>';
+    return '<details class="fold" id="why-box"' + (whyOpen ? ' open' : '') + '><summary>Why this decision <span class="small muted">· each claim and its source</span></summary><div class="fold-body" id="why">' + (rows || CG.empty('No sources recorded.')) + '</div></details>';
+  }
+
+  // THE STORY: the problem, what was checked, the decision, the next steps (all built by the server from the case; nothing is decided here)
+  var MARK = { ok: '\u2713', bad: '\u2717', warn: '\u26A0' };
+  function storyHtml() {
+    var st = c.story, d = st.decision;
+    var checked = st.checks.map(function (r) {
+      return '<div class="chk ' + r.status + '"><span class="ck" aria-hidden="true">' + MARK[r.status] + '</span><span class="sr-only">' + (r.status === 'ok' ? 'Passed' : r.status === 'bad' ? 'Failed' : 'Warning') + ': </span><b>' + CG.esc(r.label) + '</b><span class="muted">' + CG.esc(r.text) + '</span></div>';
+    }).join('');
+    var conf = d.confidence ? '<span class="pill-conf">Confidence ' + d.confidence.score + ' \u00b7 ' + CG.esc(CG.human(d.confidence.band)) + '</span>' : '';
+    return '<div class="card story" id="summary"><h2>The problem</h2><p>' + CG.esc(st.problem) + '</p></div>' +
+      '<div class="card story" id="checked"><h2>What CareGrid checked</h2>' + checked + '</div>' +
+      '<div class="card story" id="decision"><h2>Decision</h2><p>' + CG.esc(d.text) + ' ' + conf + '</p></div>' +
+      '<div class="card story" id="next"><h2>Next steps</h2><ol>' + st.next_steps.map(function (x) { return '<li>' + CG.esc(x) + '</li>'; }).join('') + '</ol></div>';
+  }
+  function detailsHtml() {
+    var lit = events.map(function (e) { return e.event; });
+    var tiers = c.reviewer && !CG.isRestricted(c.reviewer) ? c.reviewer.llm_tiers_used : null;
+    return '<details class="fold" id="details"' + (detailsOpen ? ' open' : '') + '><summary>Details <span class="small muted">· how it is handled, evidence, graph, audit, messages</span></summary><div class="fold-body">' +
+      '<div style="margin-bottom:12px">' + CG.pipeline(lit, -1, null, tiers) + '</div>' +
+      '<div class="tabs" role="tablist">' + [['handled', 'How this is handled'], ['evidence', 'Evidence'], ['graph', 'Graph'], ['audit', 'Audit timeline'], ['messages', 'Messages']].map(function (t) {
+        return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('') + '</div><div id="tab-body"></div></div></details>';
   }
 
   function decidePanel() {
@@ -281,18 +307,16 @@
   }
 
   function draw() {
-    var lit = events.map(function (e) { return e.event; });
-    var tiers = c.reviewer && !CG.isRestricted(c.reviewer) ? c.reviewer.llm_tiers_used : null;
-    el.innerHTML = '<div class="page-head"><a class="small" href="case.html">← All cases</a><div class="flex" style="margin-top:6px"><h1 class="mono">' + CG.esc(c.id) + '</h1><span style="font-size:18px;font-weight:600">' + CG.esc(CG.what(c.request_type)) + '</span>' +
-      CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old · requested by ' + CG.esc(c.requester.name) + '</span></div></div>' +
-      '<div class="card summary-card" id="summary"><h2>Summary</h2><p>' + CG.esc(c.summary) + '</p></div>' +
-      '<div class="card" style="margin-bottom:16px">' + CG.pipeline(lit, -1, null, tiers) + '</div>' +
-      '<div class="grid g-case"><div class="stack"><div class="card">' + rowsHtml() + '</div>' + guidanceHtml() + provenanceHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
-      '<div class="tabs" role="tablist">' + [['evidence', 'Evidence'], ['graph', 'Graph'], ['audit', 'Audit timeline'], ['messages', 'Messages']].map(function (t) {
-        return '<button type="button" role="tab" class="tab ' + (t[0] === tab ? 'on' : '') + '" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '">' + t[1] + '</button>'; }).join('') + '</div><div class="card" id="tab-body"></div>';
-    CG.$$('.tab', el).forEach(function (b) { b.onclick = function () { tab = b.dataset.t; draw(); }; });
+    el.innerHTML = '<div class="page-head"><a class="small" href="case.html">\u2190 All cases</a><div class="flex" style="margin-top:6px"><h1 class="mono">' + CG.esc(c.id) + '</h1><span style="font-size:18px;font-weight:600">' + CG.esc(CG.what(c.request_type)) + '</span>' +
+      CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old \u00b7 requested by ' + CG.esc(c.requester.name) + '</span></div></div>' +
+      '<div class="grid g-case"><div class="stack">' + storyHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
+      provenanceHtml() + detailsHtml();
+    var wb = document.getElementById('why-box'), db = document.getElementById('details');
+    wb.addEventListener('toggle', function () { whyOpen = wb.open; });
+    db.addEventListener('toggle', function () { detailsOpen = db.open; });
+    CG.$$('.tab', el).forEach(function (b) { b.onclick = function () { tab = b.dataset.t; detailsOpen = true; draw(); }; });
     var box = document.getElementById('tab-body');
-    if (tab === 'evidence') box.innerHTML = evidenceTab(); else if (tab === 'graph') graphTab(box); else if (tab === 'audit') box.innerHTML = auditTab(); else messagesTab(box);
+    if (tab === 'handled') box.innerHTML = '<div class="card flat">' + rowsHtml() + '</div>' + guidanceHtml(); else if (tab === 'evidence') box.innerHTML = evidenceTab(); else if (tab === 'graph') graphTab(box); else if (tab === 'audit') box.innerHTML = auditTab(); else messagesTab(box);
     wireDecide();
     wireAssistant();
   }

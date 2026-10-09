@@ -130,3 +130,11 @@ table.compact { font-size: 13px; } table.compact th, table.compact td { padding:
 
 td.ellip > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } td.ellip .subline { font-size: 12px; color: var(--muted); margin-top: 1px; } td.ellip .what { font-weight: 600; }
 table.compact td.ellip { min-width: 120px; }
+
+.card.story { padding: 12px 18px; margin-bottom: 10px; } .card.story h2 { font-size: 14px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.card.story p { margin: 0; font-size: 15px; line-height: 1.45; } .card.story ol { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.4; } .card.story li { margin: 3px 0; }
+.chk { display: grid; grid-template-columns: 20px 130px minmax(0, 1fr); gap: 6px; align-items: baseline; padding: 3px 0; font-size: 14px; } .chk .ck { font-weight: 700; }
+.chk.ok .ck { color: var(--green); } .chk.bad .ck { color: var(--red); } .chk.warn .ck { color: var(--amber); }
+.pill-conf { display: inline-block; margin-left: 6px; padding: 1px 10px; border-radius: 999px; background: var(--green-bg); color: var(--green); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.card.flat { box-shadow: none; border: 0; padding: 0; margin-bottom: 12px; } td.strong { font-weight: 700; color: var(--blue-d); }
+.demo-card { display: grid; gap: 6px; } .demo-card .talk { color: var(--muted); font-size: 14px; }

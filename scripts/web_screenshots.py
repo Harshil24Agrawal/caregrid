@@ -63,14 +63,14 @@ def main() -> None:
         old.unlink()
 
     pages = [("dashboard", "/index.html", ".kpi"), ("new-request", "/intake.html", "#req-text"), ("cases", "/case.html", "#rows"),
-             ("case-CASE-1024", "/case.html?case=CASE-1024", "#tab-body"), ("knowledge-pages", "/knowledge.html?page=KA-12&v=3", "#pdetail .card h2"),
+             ("case-CASE-1024", "/case.html?case=CASE-1024", "#next"), ("knowledge-pages", "/knowledge.html?page=KA-12&v=3", "#pdetail .card h2"),
              ("knowledge-attention", "/knowledge.html?tab=lint", "#body .card"), ("knowledge-changes", "/knowledge.html?tab=prs", "#body .card"),
              ("audit-log", "/audit.html", "#table table"), ("audit-messages", "/audit.html?tab=messages", "#msgs"),
-             ("patients", "/patients.html", "#lookup"), ("patient-record", "/patients.html?ref=PRF-2001", "#content .card")]
+             ("demo-guide", "/demo.html", "#cards .card"), ("patients", "/patients.html", "#lookup"), ("patient-record", "/patients.html?ref=PRF-2001", "#content .card")]
     with sync_playwright() as p:
         b = p.chromium.launch(channel="chrome", headless=True)
         for uid, who in (("U1", "asha"), ("U4", "rahul"), ("U5", "meera")):
-            ctx = b.new_context(viewport={"width": 1360, "height": 900})
+            ctx = b.new_context(viewport={"width": 1440, "height": 900})
             ctx.add_init_script(f"try{{localStorage.setItem('cg_user','{uid}')}}catch(e){{}}")
             pg = ctx.new_page()
             for name, path, sel in pages:

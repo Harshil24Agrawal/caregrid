@@ -78,8 +78,12 @@ class Web:
         self.page.evaluate(f"localStorage.setItem('cg_user','{uid}')")
         return self
 
-    def go(self, path, wait):
+    def go(self, path, wait, collapsed=False):
+        """Open a page. On a case page the collapsed sections (Why this decision, Details) are opened first, unless collapsed=True."""
         self.page.goto(self.base + path)
+        if "/case.html?case=" in path and not collapsed:
+            self.page.wait_for_selector("#decision, #content .lock", timeout=T)
+            self.page.evaluate("for (const id of ['details', 'why-box']) { const d = document.getElementById(id); if (d) d.open = true; }")
         self.page.wait_for_selector(wait, timeout=T)
         return self.page
 
@@ -124,7 +128,7 @@ def test_every_page_loads_for_every_role_without_errors(web):
         header = text(web.page, "header.topbar")
         assert "LLM: Mock (offline)" in header and "PHI masked" in header and "Demo login" in header and "Healthcare Operations Second Brain" in header
         assert ("Reset demo" in header) == (uid in ("U3", "U4"))             # only ops managers and senior reviewers (DEMO_MODE=1)
-        assert [a.inner_text() for a in web.page.query_selector_all("nav.navstrip a")] == ["Dashboard", "New request", "Cases", "Patients", "Knowledge", "Audit"]
+        assert [a.inner_text() for a in web.page.query_selector_all("nav.navstrip a")] == ["Dashboard", "New request", "Cases", "Patients", "Knowledge", "Audit", "Demo"]
 
 
 def test_old_urls_redirect(web):
@@ -178,12 +182,14 @@ def test_s5_decide_assistant_rbac_messages_and_amount(web):
     # Asha: locks, no amount, assistant restricted, decide disabled with the reason
     web.as_user("U1")
     p = web.go("/case.html?case=CASE-1024", "#decide")
+    p.click(".tab[data-t=evidence]")
     assert "ACCESS RESTRICTED" in text(p, "#tab-body") and "62,500" not in text(p)
     p.fill("#ask-input", "What is the amount?")
     p.press("#ask-input", "Enter")
     p.wait_for_function("document.querySelectorAll('#chat .msg.bot').length >= 1 && !document.querySelector('#chat .spinner')", timeout=T)
     assert "ACCESS RESTRICTED" in text(p, "#chat") and "62,500" not in text(p)
     assert p.query_selector("#go") is None and "Ops employees can't approve. A senior reviewer decides HIGH-risk cases." in text(p, "#decide")
+    p.click(".tab[data-t=handled]")
     why = text(p, ".row:has-text('Why a human')")
     assert "must approve" in why and why.count(".") == 1
     # Rahul decides with e-mail + WhatsApp
@@ -353,9 +359,9 @@ def test_case_page_shows_a_summary_card_and_lists_a_summary_column(web):
     web.as_user("U4")
     p = web.go("/case.html?case=CASE-1024", "#summary")
     card = text(p, "#summary")
-    assert "SUMMARY" in card.upper() and len(card.split(".")) >= 3
+    assert "THE PROBLEM" in card.upper() and "oxygen concentrator (E1390)" in card and "above the" in card
     web.go("/case.html", "#rows tr.click")
-    assert "SUMMARY" in text(p, "thead").upper()
+    assert text(p, "thead").upper().split() == ["CASE", "PROBLEM", "STATUS", "WITH", "NEXT", "STEP", "AGE"]
     cell = p.locator("#rows tr.click td.ellip").first
     assert cell.get_attribute("title") and cell.inner_text().strip()
     web.go("/index.html", "table.compact tr.click")
@@ -467,7 +473,7 @@ def test_queue_table_fits_inside_its_card_at_1440_and_1920(web):
     assert sub.inner_text().strip() and p.locator("table.compact td.ellip").first.get_attribute("title")
     p.set_viewport_size({"width": 1280, "height": 720})
     web.go("/case.html", "#rows tr.click")
-    assert "SUMMARY" in text(web.page, "thead").upper()                                  # the Cases page keeps its Summary column
+    assert [h.strip() for h in text(web.page, "thead").upper().split()] == ["CASE", "PROBLEM", "STATUS", "WITH", "NEXT", "STEP", "AGE"]
 
 
 def test_banner_uses_the_humanized_type_label(web):
@@ -475,3 +481,137 @@ def test_banner_uses_the_humanized_type_label(web):
     p = web.go("/index.html", ".banner")
     banner = text(p, ".banner")
     assert not re.search(r"(?:dme|dme request|policy_question|[a-z]+_[a-z]+)", banner) and "dme request" not in banner
+
+
+# ------------------------------------------------------------------ the case as a story, the cases list, the demo guide
+SECTIONS = ["#summary", "#checked", "#decision", "#next"]
+
+
+def story_checks(web, p, cid, who):
+    web.as_user(who)
+    p.set_viewport_size({"width": 1440, "height": 900})
+    web.go("/case.html?case=" + cid, "#next", collapsed=True)
+    for sel in SECTIONS:
+        assert p.is_visible(sel), (cid, sel)
+    assert not p.evaluate("document.getElementById('details').open || document.getElementById('why-box').open")      # detail starts collapsed
+    assert p.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")                # no horizontal overflow
+    bottom = p.evaluate("document.getElementById('next').getBoundingClientRect().bottom")
+    assert bottom <= 900, (cid, bottom)                                                                              # sections 2-5 fit one 1440x900 screen
+    return text(p, "#content")
+
+
+def test_case_story_sections_for_demo_case_s2_refused_and_answered(web):
+    p = web.page
+    t = story_checks(web, p, "CASE-1024", "U4")
+    assert "oxygen concentrator (E1390)" in t and "above the" in t and "Policy found" in t and "KA-40 v1" in t
+    assert "Send to Senior Operations Review: a senior reviewer must approve." in t and "Confidence" in t
+    assert "You: approve or reject in the Decide panel." in t and "On approval:" in t and "saved as a precedent" in t
+    t = story_checks(web, p, "CASE-1024", "U1")
+    assert "You: nothing to do." in t and "62,500" not in t
+    s2 = case_id_of(web.submit(S2, "U1"))
+    t = story_checks(web, p, s2, "U1")
+    assert "Required details" in t and "missing" in t and "You: send everything below in one reply." in t
+    t = story_checks(web, p, s2, "U4")
+    assert "Ask for exactly this:" in t and "Waiting for Asha to send" in t
+    refused = case_id_of(web.submit(S4A, "U1"))
+    t = story_checks(web, p, refused, "U1")
+    assert "medical question" in t.lower()
+    t = story_checks(web, p, refused, "U4")
+    assert "Where it went: Clinical Review" in t and "no advice is given" in t
+    answered = case_id_of(web.submit(S1, "U1"))
+    t = story_checks(web, p, answered, "U1")
+    assert "Answered automatically" in t and "You: nothing to do. The answer was sent." in t and "KA-02 v1" in t
+
+
+def test_why_and_details_are_collapsed_and_open_on_click(web):
+    web.as_user("U4")
+    p = web.go("/case.html?case=CASE-1024", "#next", collapsed=True)
+    assert not p.is_visible("#why .prov") and not p.is_visible("#tab-body")
+    p.click("#why-box summary")
+    assert p.is_visible("#why .prov")
+    p.click("#details summary")
+    assert p.is_visible("#tab-body") and "WF-09" in text(p, "#guidance")
+    for tab in ("evidence", "graph", "audit", "messages"):
+        p.click(f".tab[data-t={tab}]")
+        assert p.is_visible("#tab-body")
+
+
+def test_cases_list_columns_filters_and_row_click(web):
+    web.as_user("U4")
+    p = web.go("/case.html", "#rows tr.click")
+    p.set_viewport_size({"width": 1440, "height": 900})
+    assert text(p, "thead").upper().split() == ["CASE", "PROBLEM", "STATUS", "WITH", "NEXT", "STEP", "AGE"]
+    assert not p.evaluate("(() => { const w = document.querySelector('.tablewrap'); return w.scrollWidth > w.clientWidth; })()")
+    total = p.locator("#rows tr.click").count()
+    counts = {b.get_attribute("data-f"): int(b.locator(".n").inner_text()) for b in p.locator("#filters .chip").all()}
+    assert counts["all"] == total and counts["action"] + counts["waiting"] + counts["done"] == total and counts["action"] >= 1
+    p.click("#filters [data-f=action]")
+    assert p.locator("#rows tr.click").count() == counts["action"]
+    assert "Approve or reject" in text(p, "#rows")
+    p.click("#filters [data-f=done]")
+    assert p.locator("#rows tr.click").count() == counts["done"] and all("Done" in r.inner_text() for r in p.locator("#rows tr.click").all())
+    p.click("#filters [data-f=all]")
+    p.locator("#rows tr.click").first.click()
+    p.wait_for_selector("#summary", timeout=T)
+    assert "/case.html?case=" in p.url
+    web.as_user("U1")
+    p = web.go("/case.html", "#rows tr.click")
+    assert p.locator("#rows tr.click").count() >= 1
+
+
+def test_demo_guide_cards_act_as_the_right_user_and_open_the_right_page(web):
+    web.as_user("U1")
+    p = web.go("/demo.html", "#cards .card")
+    assert [h.inner_text() for h in p.locator("#cards h2").all()] == [
+        "S1 Trusted answer", "How-to from a workflow", "S2 Missing details", "S5 High-cost equipment (CASE-1024)", "S6 The system learns",
+        "S7 Conflict and policy fix", "S8 Health ID", "S4 Safety"]
+    assert not p.is_visible("#guide-reset")                                            # Asha may not reset
+    assert "Demo" in [a.inner_text() for a in p.query_selector_all("nav.navstrip a")]
+    fills = {"S1": S1, "S2": S2, "S6": S6A, "S4": S4A}
+    for key, expected in fills.items():
+        p = web.go("/demo.html", "#cards .card")
+        p.click(f"[data-key={key}] button >> nth=0")
+        p.wait_for_selector("#req-text", timeout=T)
+        assert p.input_value("#req-text") == expected, key
+        assert not p.is_disabled("#submit") and p.locator("#run").is_hidden()          # filled, not submitted
+    p = web.go("/demo.html", "#cards .card")
+    p.click("[data-key=HOWTO] button >> nth=0")
+    p.wait_for_selector("#req-text", timeout=T)
+    assert p.input_value("#req-text") == "How do I change a provider's billing address?"
+    p = web.go("/demo.html", "#cards .card")
+    p.click("[data-key=S4] button >> nth=1")
+    p.wait_for_selector("#req-text", timeout=T)
+    assert p.input_value("#req-text") == S4B
+    # CASE-1024: Rahul, then the requester's view of the same case
+    p = web.go("/demo.html", "#cards .card")
+    p.click("[data-key=S5] button >> nth=0")
+    p.wait_for_url("**/case.html?case=CASE-1024", timeout=T)
+    assert web.page.evaluate("localStorage.getItem('cg_user')") == "U4"
+    p = web.go("/demo.html", "#cards .card")
+    assert p.is_visible("#guide-reset")
+    p.click("[data-key=S5] button >> nth=1")
+    p.wait_for_url("**/case.html?case=CASE-1024", timeout=T)
+    assert web.page.evaluate("localStorage.getItem('cg_user')") == "U1"
+    # S7: the knowledge owner's policy updates
+    p = web.go("/demo.html", "#cards .card")
+    p.click("[data-key=S7] button >> nth=1")
+    p.wait_for_url("**/knowledge.html?tab=prs", timeout=T)
+    assert web.page.evaluate("localStorage.getItem('cg_user')") == "U5"
+    # S8: Asha is not given a Health ID; the button switches to Rahul and fills the text with a valid ID
+    web.as_user("U1")
+    p = web.go("/demo.html", "#cards .card")
+    p.click("[data-key=S8] button >> nth=0")
+    p.wait_for_selector("#req-text", timeout=T)
+    assert web.page.evaluate("localStorage.getItem('cg_user')") == "U4"
+    assert re.search(r"Patient CG-\d{4}-\d{4}-\d{4}\.", p.input_value("#req-text")) and p.locator("#run").is_hidden()
+    p = web.go("/demo.html", "#cards .card")
+    p.click("[data-key=S8] button >> nth=1")
+    p.wait_for_url("**/patients.html", timeout=T)
+
+
+def test_demo_guide_reset_button_asks_for_confirmation(web):
+    web.as_user("U4")
+    p = web.go("/demo.html", "#guide-reset")
+    p.click("#guide-reset")
+    p.wait_for_function("document.body.innerText.includes('Reset the demo?')", timeout=T)
+    p.click("text=Cancel")

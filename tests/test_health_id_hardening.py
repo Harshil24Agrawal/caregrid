@@ -67,10 +67,14 @@ class Recorder(MockLLM):
 
 
 def digit_residue(text, hid):
-    """Any run of 4+ digits of the ID that survived (the last four are shown by design in the masked display, so they are looked for as part of a longer run)."""
+    """Any 6+ digit stretch of the ID that survived in one run of digits and separators (runs are checked one by one: timestamps and random
+    ids elsewhere in a JSON blob must not be glued together into a false hit). The last four are shown by design in the masked display."""
     d = hid.replace("CG-", "").replace("-", "")
-    flat = re.sub(r"[^0-9]", "", text)
-    return d in flat or any(d[i:i + 6] in flat for i in range(0, 7))
+    for run_ in re.findall(r"\d[\d .,_/\-–−]*\d", text):
+        flat = re.sub(r"\D", "", run_)
+        if d in flat or any(d[i:i + 6] in flat for i in range(0, 7)):
+            return True
+    return False
 
 
 @pytest.mark.parametrize("kind", ["valid", "wrong_checksum", "unknown"])

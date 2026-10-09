@@ -16,7 +16,7 @@ in a tooltip ("Policies disagree" = POLICY_CONFLICT).
 
 Header on every page: provider pill, PHI masked count (masked tokens such as [PERSON_1], [NPI], [PHONE] in the cases you can see; computed by the API, values never stored), demo login
 switcher (the acting user is sent as the `X-CareGrid-User` header; NOT real authentication) and, for ops managers and senior reviewers in demo mode only, Reset demo (with confirmation).
-Nav: Dashboard · New request · Cases · Patients · Knowledge · Audit. The old `approval.html` and `comms.html` redirect (to the case's Decide panel and to
+Nav: Dashboard · New request · Cases · Patients · Knowledge · Audit (+ Demo in demo mode). The old `approval.html` and `comms.html` redirect (to the case's Decide panel and to
 Audit > Messages).
 
 | Page | The one question it answers |
@@ -47,3 +47,17 @@ Audit > Messages).
 `tests/test_api.py` (API, RBAC, no raw text stored, S1-S7), `tests/test_web_e2e.py` (the click paths above in real Chrome via Playwright, plus
 "no request leaves 127.0.0.1"; skipped when Playwright or Chrome is missing: `python -m pip install playwright`), and the API smoke step of
 `python -m caregrid.cli check`.
+
+## The case page is a story (demo-v5)
+
+Top to bottom, all built by the server from the stored case and the Second Brain (`insights/story.py`, read-only; amounts go through `check_output` for the viewer):
+1. header: id, type, state, risk, age;
+2. **The problem**: one or two plain sentences ("Asha asked to order an oxygen concentrator (E1390) for a member. Cost is ₹62,500, above the ₹50,000 limit.");
+3. **What CareGrid checked**: 3-6 rows with ✓ / ✗ / ⚠ (required details, policy found, past cases, conflicts, stale warnings, medical / sensitive flags);
+4. **Decision**: one sentence, the team, who must approve, the confidence pill;
+5. **Next steps**: numbered, different for each role (your own action first, then what happens after; a needs-info case lists exactly what to ask for; a refused case says where it went and why).
+The Decide panel and the Assistant stay on the right. **Why this decision** (each claim and its source) and **Details** (How this is handled, Evidence, Graph, Audit timeline, Messages) are collapsed. Sections 2-5 fit one 1440x900 screen (browser-tested for CASE-1024, a needs-info case, a refused case and an answered case).
+
+**Cases list:** Case · Problem · Status · With · Next step · Age, with the filters All / Needs my action / Waiting / Done.
+
+**Demo guide** (nav item "Demo", shown only when `DEMO_MODE=1`; `GET /api/demo/guide`): one card per scenario in demo order (S1, how-to, S2, CASE-1024 as Rahul then as Asha, S6, S7, S8, S4). Each button switches the demo login and either fills New request with the exact test text (not submitted) or opens the case / page. The S8 text holds a synthetic Health ID and is given only to an ops manager or senior reviewer, so that card's button switches to Rahul first. "Reset demo" at the top is shown to the allowed roles only.

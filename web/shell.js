@@ -187,7 +187,7 @@
     var nav = document.createElement('nav');
     nav.className = 'navstrip';
     nav.setAttribute('aria-label', 'Main');
-    nav.innerHTML = '<div class="navstrip-in">' + NAV.map(function (n) { return '<a href="' + n[0] + '"' + (n[0] === active ? ' class="on" aria-current="page"' : '') + '>' + n[1] + '</a>'; }).join('') + '</div>';
+    nav.innerHTML = '<div class="navstrip-in">' + NAV.concat(CG.config && CG.config.demo_mode ? [['demo.html', 'Demo']] : []).map(function (n) { return '<a href="' + n[0] + '"' + (n[0] === active ? ' class="on" aria-current="page"' : '') + '>' + n[1] + '</a>'; }).join('') + '</div>';
     document.body.insertBefore(nav, document.body.firstChild);
     document.body.insertBefore(top, document.body.firstChild);
 
