@@ -12,6 +12,7 @@ from caregrid.models import Case, DecisionCode, PageType, Role, State, User
 from caregrid.rbac import can_approve, can_view
 from caregrid.reasoning.rules import label
 from caregrid.workflow.decisions import ACTION_DESCRIPTIONS, DECIDABLE
+from caregrid.workflow.forwarding import can_confirm
 
 ASKED = {
     "general_policy_question": "asked a policy question", "provider_address_change": "asked to change a provider's billing address",
@@ -190,6 +191,12 @@ def next_steps(case: Case, brain: Brain, viewer: User) -> list[str]:
             if wf is not None and wf.meta.get("steps"):
                 out.append(f"Then {team} follows {wf.id}: " + " ".join(f"({i}) {str(s).rstrip('.')}." for i, s in enumerate(wf.meta["steps"][:3], 1)))
         out.append("On rejection: the case is closed with the reviewer's note and nothing is changed.")
+    elif case.state == State.PROPOSED:
+        if can_confirm(viewer, case):
+            out.append(f"You: send it to {team} (add a note if you like) or withdraw it, in the box on the right.")
+        else:
+            out.append(f"You: nothing to do. Waiting for {case.requester.name} to send it to {team}.")
+        out.append(f"Then: a {role} in {team} decides. CareGrid has already checked it; the suggestion is above.")
     elif case.state == State.ANSWERED:
         out.append("You: nothing to do. The answer was sent." if mine else "You: nothing to do. The requester has the answer.")
     elif case.state in FINISHED:
@@ -207,6 +214,8 @@ def bucket(case: Case, viewer: User) -> str:
         return "action"
     if case.state == State.NEEDS_INFO and case.requester.id == viewer.id:
         return "action"
+    if case.state == State.PROPOSED and can_confirm(viewer, case):
+        return "action"
     return "waiting"
 
 
@@ -215,6 +224,8 @@ def next_short(case: Case, viewer: User) -> str:
     role = _role(case)
     if b == "done":
         return "Done"
+    if case.state == State.PROPOSED:
+        return "Send it to the team" if b == "action" else "Waiting for the requester to send it"
     if case.state == State.NEEDS_INFO:
         return "Send the missing details" if case.requester.id == viewer.id else "Waiting for the requester"
     return "Approve or reject" if b == "action" else f"Waiting for a {role}"

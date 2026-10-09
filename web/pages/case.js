@@ -5,7 +5,8 @@
   var el = document.getElementById('content');
   CG.loading(el, 'Loading…');
   var list;
-  try { list = await CG_API.get('/api/cases'); } catch (e) { CG.fail(e); el.innerHTML = CG.empty('Could not load cases.'); return; }
+  var view = CG.q('view');
+  try { list = await CG_API.get('/api/cases' + (view && !CG.q('case') ? '?view=' + encodeURIComponent(view) : '')); } catch (e) { CG.fail(e); el.innerHTML = CG.empty('Could not load cases.'); return; }
   var wanted = CG.q('case');
   if (!wanted) return showList();
   if (!list.some(function (c) { return c.id === wanted; })) {
@@ -20,8 +21,10 @@
     var FILTERS = [['all', 'All'], ['action', 'Needs my action'], ['waiting', 'Waiting'], ['done', 'Done']];
     var cur = FILTERS.some(function (f) { return f[0] === CG.q('show'); }) ? CG.q('show') : 'all';
     var count = function (k) { return base.filter(function (c) { return k === 'all' || c.bucket === k; }).length; };
-    el.innerHTML = '<div class="page-head"><h1>Cases</h1><p class="muted">' + base.length + ' case' + (base.length === 1 ? '' : 's') + ' visible to ' + CG.esc(me.name) + ' (' + CG.esc(CG.role(me.role)) + ').</p></div>' +
-      '<div class="card"><div class="flex" style="margin-bottom:10px" id="filters" role="group" aria-label="Filter">' + FILTERS.map(function (f) {
+    var VIEWS = { queue: 'Open cases', needs_action: 'Needs your action', with_reviewers: 'With reviewers', answered_auto: 'Answered automatically', done: 'Done', waiting_for_you: 'Waiting for you to approve',
+      forwarded_today: 'Forwarded in the last 24 hours', high_risk: 'High or critical risk (open)', overdue: 'Overdue in review' };
+    el.innerHTML = '<div class="page-head"><h1>' + (view ? 'Cases: ' + CG.esc(VIEWS[view] || view) : 'Cases') + '</h1><p class="muted" id="list-count">' + base.length + ' case' + (base.length === 1 ? '' : 's') + (view ? '. <a href="case.html">Show all my cases</a>' : ' visible to ' + CG.esc(me.name) + ' (' + CG.esc(CG.role(me.role)) + ').') + '</p></div>' +
+      '<div class="card"><div class="flex" style="margin-bottom:10px' + (view ? ';display:none' : '') + '" id="filters" role="group" aria-label="Filter">' + FILTERS.map(function (f) {
         return '<button type="button" class="chip' + (f[0] === cur ? ' on' : '') + '" data-f="' + f[0] + '" aria-pressed="' + (f[0] === cur) + '">' + f[1] + ' <span class="n">' + count(f[0]) + '</span></button>'; }).join('') + '</div>' +
       '<div class="tablewrap"><table class="compact"><thead><tr><th>Case</th><th>Problem</th><th>Status</th><th>With</th><th>Next step</th><th>Age</th></tr></thead><tbody id="rows"></tbody></table></div></div>';
     function draw() {

@@ -144,3 +144,5 @@ table.compact td.ellip { min-width: 120px; }
 
 blockquote.quote { margin: 6px 0 0; padding: 4px 10px; border-left: 3px solid var(--line); color: var(--muted); font-size: 13px; line-height: 1.4; }
 blockquote.quote { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+a.kpi { display: block; color: inherit; text-decoration: none; } a.kpi:hover, a.kpi:focus-visible { border-color: var(--blue); text-decoration: none; }

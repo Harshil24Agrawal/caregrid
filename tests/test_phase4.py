@@ -405,11 +405,11 @@ def test_cli_demo_and_reset(paths, tmp_path, monkeypatch, capsys):
 
     assert main(["reset"]) == 0
     out = capsys.readouterr().out
-    assert "seeded: trust=8, historical_cases=20, demo_case=1" in out and "leak scan findings: 0" in out
+    assert "seeded: trust=8, historical_cases=22, demo_case=1" in out and "leak scan findings: 0" in out
 
     store = SQLiteStore()
     cases = store.list_cases()
-    assert len(cases) == 21
+    assert len(cases) == 23
     assert store.get_trust("general_policy_question").level == 1 and store.get_trust("general_policy_question").total_reviews == 14
     assert store.get_trust("provider_address_change").level == 0
     states = {c.state for c in cases}
@@ -427,8 +427,8 @@ def test_cli_demo_and_reset(paths, tmp_path, monkeypatch, capsys):
     assert main(["leakscan"]) == 0
 
     assert main(["demo"]) == 0 and "12/12 scenarios passed" in capsys.readouterr().out
-    assert len(SQLiteStore().list_cases()) == 21                  # the demo never touches the real database
-    assert main(["reset"]) == 0 and len(SQLiteStore().list_cases()) == 21     # reset is repeatable
+    assert len(SQLiteStore().list_cases()) == 23                  # the demo never touches the real database
+    assert main(["reset"]) == 0 and len(SQLiteStore().list_cases()) == 23     # reset is repeatable
 
 
 def test_audit_ids_are_prefixed_so_detectors_never_mistake_them_for_numbers(paths, brain):

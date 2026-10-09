@@ -35,6 +35,7 @@ from caregrid import alerts as alerts_mod
 from caregrid import config
 from caregrid.insights import metrics
 from caregrid.insights.explain import case_summary, one_liner, workflow_guidance
+from caregrid.insights import dashboard as dashboard_mod
 from caregrid.insights.story import bucket, next_short, problem_line, story, timeline
 from caregrid.insights.provenance import format_source, page_sections, provenance, source_for_citation
 from caregrid.insights.graph import case_graph
@@ -250,7 +251,7 @@ def case_row(c: Case, user: User | None = None) -> dict:
         "approver_role": c.approver_role.value if c.approver_role else None, "age_hours": hours_since(c.created_at),
         "created_at": c.created_at.isoformat(), "reason_codes": [r.value for r in c.reason_codes], "requester": c.requester.name,
         "trust_level": c.trust_level, "summary": one_liner(c),
-        "forwarded_at": c.forwarded_at.isoformat() if c.forwarded_at else None, "problem": problem_line(c), "bucket": bucket(c, user) if user else None, "next_short": next_short(c, user) if user else None,
+        "forwarded_at": c.forwarded_at.isoformat() if c.forwarded_at else None, "state_age_hours": dashboard_mod.state_age_hours(c), "problem": problem_line(c), "bucket": bucket(c, user) if user else None, "next_short": next_short(c, user) if user else None,
     }
 
 
@@ -473,10 +474,53 @@ def api_create_request(body: RequestIn, user: User = Depends(actor)):
 
 
 @app.get("/api/cases")
-def api_cases(user: User = Depends(actor)):
+def api_cases(view: str | None = None, user: User = Depends(actor)):
+    """The cases this viewer may open. ?view=<name> returns exactly what the dashboard counts for that name (insights/dashboard.py)."""
     store = get_store()
     rows = sorted(visible_cases(user, store), key=lambda c: c.created_at, reverse=True)
+    if view:
+        views = dashboard_mod.case_views(user, rows)
+        if view not in views:
+            raise HTTPException(status_code=422, detail="Unknown view.")
+        rows = views[view]
     return scrub([case_row(c, user) for c in rows], user)
+
+
+def _visible_audit(user: User, store: SQLiteStore, case: str | None = None, events: set[str] | None = None, actor_id: str | None = None) -> list:
+    """Audit events this user may see, newest first (no limit): cases they can open, plus system events for roles that see the whole system."""
+    cases: dict = {}
+    out = []
+    system_ok = user.role.value in ("auditor", "senior_reviewer", "ops_manager", "knowledge_owner")
+    for e in sorted(store.list_audit(), key=lambda e: e.ts, reverse=True):
+        if (case and e.case_id != case) or (events and e.event not in events) or (actor_id and e.actor_id != actor_id):
+            continue
+        if e.case_id is None:
+            if not system_ok:
+                continue
+        else:
+            if e.case_id not in cases:
+                cases[e.case_id] = store.get_case(e.case_id)
+            c = cases[e.case_id]
+            if c is None or not can_view(user, c, "summary"):
+                continue
+        out.append(e)
+    return out
+
+
+@app.get("/api/dashboard")
+def api_dashboard(user: User = Depends(actor)):
+    """Every number on the dashboard for this viewer: tiles, banner and queue count, each the length of the list it links to."""
+    store, brain = get_store(), get_brain()
+    visible = visible_cases(user, store)
+    prs_open = lint_counts = None
+    if knowledge_admin(user):
+        prs_open = len(store.list_prs("open"))
+        lint_counts = {}
+        for f in lint(brain, store):
+            if f.severity != "info":
+                lint_counts[f.code] = lint_counts.get(f.code, 0) + 1
+    events = _visible_audit(user, store) if user.role in (Role.AUDITOR,) else []
+    return scrub(dashboard_mod.dashboard(user, visible, prs_open or 0, lint_counts or {}, events), user)
 
 
 @app.get("/api/cases/{case_id}")
@@ -632,7 +676,7 @@ def api_metrics(user: User = Depends(actor)):
         _sweep["at"] = time.monotonic()
         alerts_mod.sweep(store)
     sc = scoped_store(user, store)
-    waiting = [c for c in visible_cases(user, store) if c.state in (State.IN_REVIEW, State.ESCALATED, State.NEEDS_INFO)]
+    waiting = [c for c in visible_cases(user, store) if c.state in dashboard_mod.OPEN]               # the "queue" view: the same list as /api/cases?view=queue
     trust = [t.model_dump(mode="json") for t in metrics.trust_overview(store)]
     for t in trust:
         t["agreement_pct"] = round(100 * t["agreements"] / t["total_reviews"], 1) if t["total_reviews"] else None
@@ -907,30 +951,10 @@ def api_comms(user: User = Depends(actor)):
 @app.get("/api/audit")
 def api_audit(case: str | None = None, event: str | None = None, actor_id: str | None = Query(default=None, alias="actor"),
               limit: int = Query(default=300, ge=1, le=2000), user: User = Depends(actor)):
-    """Events for cases this user may see. Events without a case (system, PR decisions) only for roles that see the whole system."""
-    store = get_store()
-    cases = {}
-    out = []
-    system_ok = user.role.value in ("auditor", "senior_reviewer", "ops_manager", "knowledge_owner")
-    for e in sorted(store.list_audit(), key=lambda e: e.ts, reverse=True):
-        if case and e.case_id != case:
-            continue
-        if event and e.event != event:
-            continue
-        if actor_id and e.actor_id != actor_id:
-            continue
-        if e.case_id is None:
-            if not system_ok:
-                continue
-        else:
-            if e.case_id not in cases:
-                cases[e.case_id] = store.get_case(e.case_id)
-            c = cases[e.case_id]
-            if c is None or not can_view(user, c, "summary"):
-                continue
-        out.append(audit_row(e))
-        if len(out) >= limit:
-            break
+    """Events for cases this user may see. Events without a case (system, PR decisions) only for roles that see the whole system.
+    `event` may list several names separated by commas."""
+    rows = _visible_audit(user, get_store(), case, set(event.split(",")) if event else None, actor_id)[:limit]
+    out = [audit_row(e) for e in rows]
     return {"events": scrub(out, user), "event_types": sorted({e["event"] for e in out})}
 
 

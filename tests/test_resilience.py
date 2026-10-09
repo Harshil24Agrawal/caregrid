@@ -240,7 +240,7 @@ def test_reset_demo_always_seeds_with_the_mock_even_when_env_selects_a_provider(
     c1 = SQLiteStore().get_case("CASE-1024")
     second = reset_demo()
     c2 = SQLiteStore().get_case("CASE-1024")
-    assert first["seeded"] == second["seeded"] == {"trust": 8, "historical_cases": 20, "demo_case": 1}
+    assert first["seeded"] == second["seeded"] == {"trust": 8, "historical_cases": 22, "demo_case": 1}
     assert c1.classification.model_used == "mock-light" and c1.proposal.model_used == "mock-strong" and c1.llm_tiers_used == ["light", "strong"]
     assert stable(c1) == stable(c2)                                                       # identical every run
     assert c1.confidence.score == 95 and c1.rules.risk.value == "high"
@@ -253,7 +253,7 @@ def test_cli_reset_uses_the_same_deterministic_path(paths, monkeypatch, capsys):
     monkeypatch.setattr(config, "LLM_PROVIDER", "openai_compat")
     monkeypatch.setattr(llm_mod, "get_llm", lambda: (_ for _ in ()).throw(AssertionError("provider constructed")))
     assert main(["reset"]) == 0
-    assert "seeded: trust=8, historical_cases=20, demo_case=1" in capsys.readouterr().out
+    assert "seeded: trust=8, historical_cases=22, demo_case=1" in capsys.readouterr().out
 
 
 # ================================================================== cli demo --provider

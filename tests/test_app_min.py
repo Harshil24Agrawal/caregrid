@@ -158,7 +158,10 @@ def test_s7_pr_loop_through_the_ui(world):
     kiran_k = clean(open_page("knowledge", "kiran"))
     assert all(b.disabled for b in kiran_k.button if b.label in ("Approve", "Reject")) and any(b.label == "Approve" for b in kiran_k.button)
     meera = clean(open_page("knowledge", "meera"))
-    approve = next(b for b in meera.button if b.label == "Approve")
+    from caregrid.store import SQLiteStore
+
+    ka32 = next(p for p in SQLiteStore().list_prs("open") if p.target_page_id == "KA-32")          # the seeded KA-45 suggestion is also open
+    approve = next(b for b in meera.button if b.key == f"ap_{ka32.id}")
     assert not approve.disabled
     approve.click()
     clean(meera.run())

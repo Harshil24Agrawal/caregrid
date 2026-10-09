@@ -764,7 +764,7 @@ def test_dashboard_counts(seeded):
     e.run(NAME_A)
     e.run(S2)
     counts = metrics.dashboard_counts(e.store)
-    assert counts["total"] == 24 and sum(counts["by_state"].values()) == 24
+    assert counts["total"] == 26 and sum(counts["by_state"].values()) == 26
     assert counts["by_routing"]["auto"] == 3 and counts["auto_answered"] == 3 and s1.routing == "auto"          # two seeded auto-answers + S1
     assert counts["open"] == counts["awaiting_review"] + counts["needs_info"] + counts["escalated"] + counts["by_state"].get("proposed", 0)
     assert counts["awaiting_review"] >= 5 and counts["needs_info"] >= 3 and sum(counts["by_team"].values()) == counts["open"]
@@ -828,7 +828,7 @@ def test_reset_demo_is_repeatable_importable_and_reloads_a_cached_brain(world, t
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "db.sqlite")
     lines = []
     result = reset_demo(echo=lines.append)
-    assert result["leak_findings"] == [] and result["seeded"] == {"trust": 8, "historical_cases": 20, "demo_case": 1}
+    assert result["leak_findings"] == [] and result["seeded"] == {"trust": 8, "historical_cases": 22, "demo_case": 1}
     assert result["brain"]["precedent"] == 40 and result["db"] == str(tmp_path / "db.sqlite") and any("wiped" in line for line in lines)
 
     cached = Brain(config.BRAIN_DIR)                                   # what the Streamlit app holds
@@ -837,11 +837,11 @@ def test_reset_demo_is_repeatable_importable_and_reloads_a_cached_brain(world, t
     submit_decision(ReviewDecision(case_id=case.id, reviewer=load_users(config.DATA_DIR)["U2"], action=ReviewAction.APPROVE, channels=[]),
                     store, cached, LLM)
     learned = [p.id for p in cached.precedents() if p.source_case_id == case.id]
-    assert len(learned) == 1 and len(store.list_cases()) == 22
+    assert len(learned) == 1 and len(store.list_cases()) == 24
     again = reset_demo(brain=cached)
     assert again["seeded"] == result["seeded"]
     assert cached.get_precedent(learned[0]) is None and len(cached.precedents()) == 40         # the cached brain forgot it
-    assert len(SQLiteStore().list_cases()) == 21 and SQLiteStore().get_trust("provider_name_change").total_reviews == 0
+    assert len(SQLiteStore().list_cases()) == 23 and SQLiteStore().get_trust("provider_name_change").total_reviews == 0
 
 
 def test_the_same_recipient_is_sent_to_once_per_channel_within_one_send(env):

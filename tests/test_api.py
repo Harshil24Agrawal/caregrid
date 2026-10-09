@@ -250,7 +250,7 @@ def test_reset_restores_the_demo(client):
     assert client.post("/api/reset", headers=H["neha"]).json()["ok"] is True      # an ops manager, DEMO_MODE=1
     cases = client.get("/api/cases", headers=H["neha"]).json()
     assert any(c["id"] == "CASE-1024" and c["state"] == "in_review" for c in cases)
-    assert client.get("/api/prs", headers=H["meera"]).json() == []
+    assert [p["target_page_id"] for p in client.get("/api/prs", headers=H["meera"]).json()] == ["KA-45"]       # only the seeded policy-update suggestion
 
 
 # ================================================================== review hardening

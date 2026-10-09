@@ -125,6 +125,49 @@ def story_violations(store, brain, users) -> list[str]:
     return out
 
 
+def dashboard_audit(client, store, brain, users) -> list[str]:
+    """Recompute every dashboard number from the raw cases (rbac and plain state tests, not the dashboard module) and compare with /api/dashboard."""
+    from datetime import datetime, timedelta
+
+    from caregrid.knowledge.lint import lint
+    from caregrid.rbac import can_approve, can_view
+
+    now, cases, bad = datetime.now(), store.list_cases(), []
+    done_states, open_states, wait_states = {"answered", "approved", "actioned", "notified", "closed", "rejected"}, {"proposed", "needs_info", "in_review", "escalated"}, {"in_review", "escalated"}
+    events = store.list_audit()
+    for uid, u in users.items():
+        seen = [c for c in cases if can_view(u, c, "summary")]
+        want: dict[str, int] = {}
+        role = u.role.value
+        if role == "ops_employee":
+            want = {"needs_action": sum((c.state.value == "needs_info" and c.requester.id == u.id) or (c.state.value == "proposed" and c.requester.id == u.id) for c in seen),
+                    "with_reviewers": sum(c.state.value in wait_states for c in seen), "answered_auto": sum(c.routing == "auto" for c in seen),
+                    "done": sum(c.state.value in done_states for c in seen)}
+        elif role == "knowledge_owner":
+            found = [f for f in lint(brain, store) if f.severity != "info"]
+            want = {"prs": len(store.list_prs("open")), "conflicts": sum(f.code == "CONTRADICTION" for f in found), "gaps": sum(f.code == "ESCALATION_HOTSPOT" for f in found)}
+        elif role == "auditor":
+            kinds = [e.event for e in events]
+            want = {"blocked": kinds.count("guard_blocked"), "reveals": kinds.count("record_revealed"),
+                    "denials": sum(kinds.count(k) for k in ("review_denied", "pr_denied", "reset_denied", "record_lookup_denied"))}
+        else:
+            def entered(c):
+                return next((ts for st, ts in reversed(c.state_history) if st == c.state), c.created_at)
+
+            want = {"waiting_for_you": sum(c.state.value in wait_states and can_approve(u, c) for c in seen),
+                    "forwarded_today": sum(bool(c.forwarded_at) and timedelta(0) <= now - c.forwarded_at < timedelta(hours=24) for c in seen),
+                    "high_risk": sum(c.state.value in open_states and c.rules is not None and c.rules.risk.value in ("high", "critical") for c in seen),
+                    "overdue": sum(c.state.value in wait_states and now - entered(c) > timedelta(hours=24) for c in seen)}
+        got = client.get("/api/dashboard", headers={"X-CareGrid-User": uid}).json()
+        have = {t["key"]: t["count"] for t in got["tiles"]}
+        bad += [f"{uid}/{k}: tile {have.get(k)} != recomputed {v}" for k, v in want.items() if have.get(k) != v]
+        if got["visible"] != len(seen):
+            bad.append(f"{uid}/visible: {got['visible']} != {len(seen)}")
+        if got["queue"]["count"] != sum(c.state.value in open_states for c in seen):
+            bad.append(f"{uid}/queue: {got['queue']['count']} != recomputed")
+    return bad
+
+
 def state_rule_violations(store) -> list[str]:
     """A1: a case's state always matches its rules. NEEDS_INFO means something is missing or invalid (and says what to send); a case with
     something missing never sits answered / proposed / in review (unless a safety override sent it straight to a person)."""
@@ -239,6 +282,13 @@ def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) ->
              + (f"; FAILED {failed_probes}" if failed_probes else ""))
     except Exception as e:                       # noqa: BLE001 - a broken import must show up as a FAIL, not a crash
         item("API smoke (auth, RBAC, amount rule)", False, f"{type(e).__name__}: {e}")
+
+    try:
+        bad_dash = dashboard_audit(c, SQLiteStore(), Brain(config.BRAIN_DIR), load_users(config.DATA_DIR))
+        item("data audit: every dashboard number recomputed from the raw cases", not bad_dash, "7 users x all tiles, visible and queue counts"
+             + (f"; MISMATCH {bad_dash[:3]}" if bad_dash else ""))
+    except Exception as e:                       # noqa: BLE001
+        item("data audit: every dashboard number recomputed from the raw cases", False, f"{type(e).__name__}: {e}")
 
     bad = [name for name, ok, _ in results if not ok]
     echo(f"\n{len(results) - len(bad)}/{len(results)} checks passed" + (f"; FAILED: {len(bad)}" if bad else ""))

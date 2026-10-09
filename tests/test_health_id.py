@@ -147,7 +147,7 @@ def test_record_never_carries_personal_details_for_any_role(client):
 def test_auditor_sees_the_access_log_and_no_timeline(client):
     client.get("/api/patients/PRF-2001", headers=H["rahul"])
     r = client.get("/api/patients/PRF-2001", headers=H["arjun"]).json()
-    assert r["timeline"] == [] and r["access_log"] and {e["event"] for e in r["access_log"]} == {"record_viewed"}
+    assert r["timeline"] == [] and r["access_log"] and {e["event"] for e in r["access_log"]} >= {"record_viewed", "record_revealed"}
     assert any(e["actor_id"] == "U4" for e in r["access_log"])
     assert client.get("/api/patients/PRF-2001", headers=H["rahul"]).json()["access_log"] is None
 

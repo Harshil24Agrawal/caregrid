@@ -95,7 +95,7 @@
         return '<div class="att ' + kind[1] + '"><div class="top">' + CG.tag(kind[0], kind[1]) + '<span class="small muted" title="' + CG.esc(x.code) + '">' + CG.esc(LINT[x.code] || CG.human(x.code)) + '</span></div><div class="small">' + CG.esc(x.message) + '</div>' +
           '<div style="margin-top:4px">' + x.page_ids.map(function (i) { return '<a class="chip" href="' + CG.pageLink(i) + '">' + CG.esc(i) + '</a>'; }).join('') + '</div></div>';
       }
-      var main = f.filter(function (x) { return x.severity !== 'info'; }), info = f.filter(function (x) { return x.severity === 'info'; });
+      var main = f.filter(function (x) { return x.severity !== 'info' && (!CG.q('code') || x.code === CG.q('code')); }), info = f.filter(function (x) { return x.severity === 'info'; });
       body.innerHTML = '<div class="card"><div class="card-title"><h2>Needs attention (' + main.length + ')</h2><button class="btn sm" id="rerun" type="button">Run check again</button></div>' +
         (main.length ? main.map(card).join('') : CG.empty('Nothing is wrong. The Second Brain has no conflicts or stale links.')) + '</div>' +
         (info.length ? '<details class="fold"><summary>Notices (' + info.length + ')</summary><div class="fold-body">' + info.map(card).join('') + '</div></details>' : '');

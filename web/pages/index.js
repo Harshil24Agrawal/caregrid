@@ -5,11 +5,11 @@
   var el = document.getElementById('content');
   CG.loading(el, 'Loading the dashboard…');
   var admin = CG.isKnowledgeAdmin();
-  var m, cases, audit, lint = [], prs = [];
+  var m, cases, audit, lint = [], prs = [], dash;
   try {
     var r = await Promise.all([CG_API.get('/api/metrics'), CG_API.get('/api/cases'), CG_API.get('/api/audit?limit=2000'),
-      admin ? CG_API.get('/api/lint') : Promise.resolve([]), admin ? CG_API.get('/api/prs?status=open') : Promise.resolve([])]);
-    m = r[0]; cases = r[1]; audit = r[2]; lint = r[3]; prs = r[4];
+      admin ? CG_API.get('/api/lint') : Promise.resolve([]), admin ? CG_API.get('/api/prs?status=open') : Promise.resolve([]), CG_API.get('/api/dashboard')]);
+    m = r[0]; cases = r[1]; audit = r[2]; lint = r[3]; prs = r[4]; dash = r[5];
   } catch (e) { CG.fail(e); el.innerHTML = CG.empty('Could not load the dashboard.'); return; }
 
   var c = m.counts, RANK = { critical: 4, high: 3, medium: 2, low: 1 }, role = me.role;
@@ -17,59 +17,16 @@
   var openHigh = cases.filter(function (x) { return (x.risk === 'high' || x.risk === 'critical') && ['in_review', 'needs_info', 'escalated'].indexOf(x.state) >= 0; }).length;
   var plural = function (n, one, many) { return n + ' ' + (n === 1 ? one : many); };
 
-  // ------------------------------------------------------------ role-aware attention banner
+  // ------------------------------------------------------------ banner: the single most important action for this role (numbers come from /api/dashboard)
   function banner() {
-    function b(kind, html, btnHref, btnText) { return '<div class="banner ' + kind + '"><div class="grow">' + html + '</div><a class="btn primary" href="' + btnHref + '">' + CG.esc(btnText) + '</a></div>'; }
-    if (role === 'ops_employee') {
-      var withRev = cases.filter(function (x) { return x.state === 'in_review' || x.state === 'escalated'; }).length;
-      var need = cases.filter(function (x) { return x.state === 'needs_info'; }).length;
-      if (!withRev && !need) return b('green', '<b>You have no open requests.</b> Submit one to see it flow through.', 'intake.html', 'New request');
-      return b(need ? 'amber' : 'green', '<b>Your requests:</b> ' + withRev + ' with reviewers, ' + need + ' need more details from you.', need ? 'case.html?state=needs_info' : 'case.html', need ? 'See requests needing details' : 'See my requests');
-    }
-    if (role === 'knowledge_owner') {
-      var conflicts = lint.filter(function (x) { return x.code === 'CONTRADICTION'; }).length, gaps = lint.filter(function (x) { return x.code === 'ESCALATION_HOTSPOT'; }).length;
-      var txt = '<b>' + plural(conflicts, 'open policy conflict', 'open policy conflicts') + ', ' + plural(gaps, 'knowledge gap', 'knowledge gaps') + ' and ' + plural(prs.length, 'policy update', 'policy updates') + ' waiting.</b>';
-      if (!conflicts && !gaps && !prs.length) return b('green', '<b>The Second Brain is in good shape.</b> No conflicts, gaps or policy updates waiting.', 'knowledge.html', 'Open Knowledge');
-      return b(conflicts ? 'red' : 'amber', txt, prs.length ? 'knowledge.html?tab=prs' : 'knowledge.html?tab=lint', prs.length ? 'Review policy updates' : 'See what needs attention');
-    }
-    if (role === 'auditor') {
-      var count = function (n) { return audit.events.filter(function (e) { return e.event === n; }).length; };
-      var blocked = count('guard_blocked'), denied = count('review_denied') + count('pr_denied') + count('reset_denied');
-      if (!blocked && !denied) return b('green', '<b>No blocked or denied events recently.</b>', 'audit.html', 'Open audit');
-      return b('amber', '<b>' + plural(blocked, 'blocked request', 'blocked requests') + ' and ' + plural(denied, 'denial', 'denials') + ' in the recent log.</b>', blocked ? 'audit.html?event=guard_blocked' : 'audit.html', 'See blocked requests');
-    }
-    // approvers: only cases they can approve
-    var mine = queue.filter(function (q) { return q.can_approve; });
-    if (!mine.length) {
-      return queue.length ? b('green', '<b>Nothing for you to approve.</b> ' + plural(queue.length, 'case is', 'cases are') + ' with other reviewers or waiting for the requester.', 'case.html', 'See all cases') :
-        b('green', '<b>Nothing is waiting for you.</b> New requests that need a person will show up here.', 'intake.html', 'New request');
-    }
-    var top = mine[0], conf = mine.filter(function (q) { return q.reason_codes.indexOf('POLICY_CONFLICT') >= 0; }).length;
-    return b((RANK[top.risk] || 0) >= 3 || conf ? 'red' : 'amber', '<b>' + plural(mine.length, 'case is', 'cases are') + ' waiting for you to approve.</b> Highest risk: ' + CG.esc(top.id) + ' (' + CG.esc(top.risk) + ' risk, ' +
-      CG.esc(CG.inSentence(CG.shortWhat(top.request_type))) + ')' + (conf ? '. ' + plural(conf, 'case has', 'cases have') + ' policies that disagree' : '') + '.', 'case.html?case=' + encodeURIComponent(top.id) + '&decide=1', 'Review ' + top.id);
+    var bn = dash.banner;
+    return '<div class="banner ' + bn.tone + '" id="banner" data-count="' + bn.count + '"><div class="grow">' + CG.esc(bn.text) + '</div><a class="btn primary" id="banner-go" href="' + CG.esc(bn.href) + '">' + CG.esc(bn.button) + '</a></div>';
   }
 
   function kpi(label, n, cap) { return '<div class="kpi"><div class="label">' + CG.esc(label) + '</div><div class="num">' + CG.esc(n) + '</div><div class="cap">' + CG.esc(cap) + '</div></div>'; }
-  // role-specific KPIs: only counts this role can act on
-  var today = new Date().toDateString();
-  var cnt = function (name) { return audit.events.filter(function (e) { return e.event === name; }).length; };
-  var tiles;
-  if (role === 'ops_employee') {
-    tiles = [['Needs your action', cases.filter(function (x) { return x.bucket === 'action'; }).length, 'add details or send it on'],
-      ['With reviewers', cases.filter(function (x) { return x.state === 'in_review' || x.state === 'escalated'; }).length, 'a person is deciding'],
-      ['Answered automatically', c.auto_answered, 'no person needed'], ['Done', cases.filter(function (x) { return x.bucket === 'done'; }).length, 'finished']];
-  } else if (role === 'knowledge_owner') {
-    tiles = [['Policy updates waiting', prs.length, 'for your decision'], ['Conflicts', lint.filter(function (x) { return x.code === 'CONTRADICTION'; }).length, 'policies that disagree'],
-      ['Gaps', lint.filter(function (x) { return x.code === 'ESCALATION_HOTSPOT'; }).length, 'topics without a policy']];
-  } else if (role === 'auditor') {
-    tiles = [['Blocked attempts', cnt('guard_blocked'), 'stopped by the safety check'], ['Reveals', cnt('record_revealed'), 'personal details shown'],
-      ['Denials', cnt('review_denied') + cnt('pr_denied') + cnt('reset_denied') + cnt('record_lookup_denied'), 'refused actions']];
-  } else {
-    var mineQ = queue.filter(function (q) { return q.can_approve; });
-    tiles = [['Waiting for you', mineQ.length, 'you can approve these'], ['Forwarded today', cases.filter(function (x) { return x.forwarded_at && new Date(x.forwarded_at).toDateString() === today; }).length, 'sent to a team by requesters'],
-      ['High risk', openHigh, 'open cases'], ['Overdue', queue.filter(function (q) { return q.age_hours > 24; }).length, 'waiting more than 24 h']];
-  }
-  var kpis = '<div class="grid g' + tiles.length + '" style="margin-bottom:16px">' + tiles.map(function (t) { return kpi(t[0], t[1], t[2]); }).join('') + '</div>';
+  // tiles: each is a link to the list it counts (numbers come from /api/dashboard: the length of that very list)
+  var kpis = '<div class="grid g' + dash.tiles.length + '" style="margin-bottom:16px">' + dash.tiles.map(function (t) {
+    return '<a class="kpi" data-tile="' + CG.esc(t.key) + '" data-count="' + t.count + '" href="' + CG.esc(t.href) + '"><div class="label">' + CG.esc(t.label) + '</div><div class="num">' + t.count + '</div><div class="cap">' + CG.esc(t.cap) + '</div></a>'; }).join('') + '</div>';
 
   // ------------------------------------------------------------ trust ladder: one line per type, thin progress bar
   var T = m.trust_thresholds;
@@ -88,7 +45,7 @@
     return '<tr class="click" data-id="' + CG.esc(q.id) + '"><td class="nw">' + CG.caseLink(q.id) + '</td><td class="ellip" title="' + CG.esc(q.summary) + '"><div class="what">' + CG.esc(CG.shortWhat(q.request_type)) + '</div><div class="subline">' + CG.esc(q.summary) + '</div></td><td class="nw">' + CG.stateTag(q.state) + '</td><td class="nw">' + CG.riskTag(q.risk, true) +
       '</td><td class="nw small" title="' + CG.esc(CG.team(q.team)) + '">' + CG.esc(CG.teamShort(q.team)) + '</td><td class="nw small">' + CG.esc(CG.age(q.age_hours)) + '</td></tr>';
   }).join('');
-  var queueCard = '<div class="card"><div class="card-title"><h2>My queue</h2><a class="small" href="case.html">' + (queue.length > 8 ? 'See all ' + queue.length : 'All cases') + '</a></div>' +
+  var queueCard = '<div class="card"><div class="card-title"><h2>My queue</h2><a class="small" id="see-all" href="' + CG.esc(dash.queue.href) + '">' + 'See all ' + dash.queue.count + ' →' + '</a></div>' +
     (queue.length ? '<div class="tablewrap"><table class="compact"><thead><tr><th>Case</th><th>What</th><th>State</th><th>Risk</th><th>Team</th><th>Age</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
       CG.empty('Nothing is waiting. Submit a request from New request to see it flow through.')) + '</div>';
 

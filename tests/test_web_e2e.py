@@ -311,16 +311,16 @@ def test_reset_button_is_hidden_for_other_roles(web):
 def test_dashboard_banner_depends_on_the_role(web):
     web.as_user("U1")
     banner = text(web.go("/index.html", ".banner"), ".banner")
-    assert banner.startswith("Your requests:") and "with reviewers" in banner and "need more details from you" in banner
+    assert "need your action" in banner and "Do it now" in banner
     web.as_user("U4")
     banner = text(web.go("/index.html", ".banner"), ".banner")
     assert "waiting for you to approve" in banner and "Review " in banner
     web.as_user("U5")
     banner = text(web.go("/index.html", ".banner"), ".banner")
-    assert "policy" in banner.lower() and ("conflict" in banner or "good shape" in banner)
+    assert "policy update" in banner.lower() or "conflict" in banner or "good shape" in banner
     web.as_user("U6")
     banner = text(web.go("/index.html", ".banner"), ".banner")
-    assert "blocked" in banner.lower() or "denied" in banner.lower()
+    assert "blocked" in banner.lower() or "no blocked" in banner.lower()
     web.as_user("U1")
     p = web.go("/index.html", ".banner")
     assert int(p.inner_text("#phi-n")) > 0                                  # masked tokens exist, so the pill is never 0
@@ -657,3 +657,39 @@ def test_dashboard_tiles_are_role_specific(web):
         web.as_user(uid)
         p = web.go("/index.html", ".kpi")
         assert [x.inner_text().upper() for x in p.locator(".kpi .label").all()] == labels, uid
+
+
+def rows_on_destination(web, p):
+    """How many rows the page the tile / banner opened lists."""
+    url = p.url
+    if "case.html" in url:
+        p.wait_for_selector("#rows", timeout=T)
+        return p.locator("#rows tr.click").count()
+    if "knowledge.html" in url:
+        p.wait_for_selector("#body .card", timeout=T)
+        return p.locator("#body > .card:first-child > .att").count()
+    p.wait_for_selector("#table table, #table .empty", timeout=T)
+    return p.locator("#table tbody tr:not([hidden]):not([id])").count()
+
+
+def test_every_dashboard_tile_and_banner_opens_a_list_with_exactly_that_many_rows(web):
+    for uid in ("U1", "U2", "U3", "U4", "U5", "U6", "U7"):
+        web.as_user(uid)
+        p = web.go("/index.html", ".kpi")
+        tiles = [(t.get_attribute("data-tile"), int(t.get_attribute("data-count"))) for t in p.locator("a.kpi").all()]
+        assert tiles and all(int(p.locator(f"a.kpi[data-tile={k}] .num").inner_text()) == n for k, n in tiles), uid      # the displayed number is the counted one
+        for key, n in tiles:
+            web.go("/index.html", ".kpi")
+            p.click(f"a.kpi[data-tile={key}]")
+            got = rows_on_destination(web, p)
+            assert got == n, (uid, key, got, n)
+        p = web.go("/index.html", "#banner")
+        n = int(p.get_attribute("#banner", "data-count"))
+        if n:
+            p.click("#banner-go")
+            got = rows_on_destination(web, p)
+            assert got == n, (uid, "banner", got, n)
+        p = web.go("/index.html", "#see-all")
+        shown = int(re.search(r"\d+", p.inner_text("#see-all")).group(0))
+        p.click("#see-all")
+        assert rows_on_destination(web, p) == shown, (uid, "see all")

@@ -22,7 +22,7 @@
       '<button id="apply" class="btn primary" type="button" style="align-self:flex-end">Apply</button></div><div id="table"></div></div>';
     var seen = false;
     async function load() {
-      var p = new URLSearchParams();
+      var p = new URLSearchParams(); p.set('limit', '2000');
       [['case', 'f-case'], ['event', 'f-event'], ['actor', 'f-actor']].forEach(function (x) { var v = document.getElementById(x[1]).value.trim(); if (v) p.set(x[0], v); });
       if (!seen && CG.q('event') && !p.get('event')) p.set('event', CG.q('event'));            // arriving from a dashboard link
       var box = document.getElementById('table');
