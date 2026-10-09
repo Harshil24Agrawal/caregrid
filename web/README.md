@@ -61,3 +61,11 @@ The Decide panel and the Assistant stay on the right. **Why this decision** (eac
 **Cases list:** Case · Problem · Status · With · Next step · Age, with the filters All / Needs my action / Waiting / Done.
 
 **Demo guide** (nav item "Demo", shown only when `DEMO_MODE=1`; `GET /api/demo/guide`): one card per scenario in demo order (S1, how-to, S2, CASE-1024 as Rahul then as Asha, S6, S7, S8, S4). Each button switches the demo login and either fills New request with the exact test text (not submitted) or opens the case / page. The S8 text holds a synthetic Health ID and is given only to an ops manager or senior reviewer, so that card's button switches to Rahul first. "Reset demo" at the top is shown to the allowed roles only.
+
+## The flow since demo-v6
+
+1. A request that a person must decide, with no safety override, stops at "Ready to send to <team>": the requester opens the case and either **sends it** (optional masked note) or **withdraws** it. Safety cases (medical, injection, sensitive, account-specific) go to review at once, shown as "Sent automatically for safety". Auto-answered cases are unchanged.
+2. A case that needs details shows the requester an **Add missing details** form with exactly the missing / invalid fields (a drop-down for the supporting document). The values are guarded and masked like a new request, the case is re-checked, and only what is still missing is asked again.
+3. Reviewers see **Forwarded by Asha · time** and her note on the case; the **Timeline** card tells the story from the audit log (last three entries, expandable), including alerts ("Alert emailed to Senior Ops on-call", or "simulated").
+4. Click paths that changed: **S2** Asha submits, opens the case, fills the form (NPI 1234567890, date, document), sends it. **S3 / S6 / S7** Asha opens her case and clicks "Send to ..." before the reviewer can decide (Cases -> filter "Needs my action"). **S5** CASE-1024 is already forwarded by Asha ("Vendor quote attached...").
+5. Deploy: see `docs/DEPLOY.md`.

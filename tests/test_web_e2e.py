@@ -645,3 +645,13 @@ def test_requester_adds_details_confirms_the_handoff_and_the_reviewer_sees_who_f
     p = web.go("/case.html?case=" + cid, "#forwarded-by")
     assert "Forwarded by Asha" in text(p, "#forwarded-by") and "All documents are attached." in text(p, "#forward-note")
     assert "You: approve or reject in the Decide panel." in text(p, "#next")
+
+
+def test_dashboard_tiles_are_role_specific(web):
+    expect = {"U1": ["NEEDS YOUR ACTION", "WITH REVIEWERS", "ANSWERED AUTOMATICALLY", "DONE"],
+              "U4": ["WAITING FOR YOU", "FORWARDED TODAY", "HIGH RISK", "OVERDUE"],
+              "U5": ["POLICY UPDATES WAITING", "CONFLICTS", "GAPS"], "U6": ["BLOCKED ATTEMPTS", "REVEALS", "DENIALS"]}
+    for uid, labels in expect.items():
+        web.as_user(uid)
+        p = web.go("/index.html", ".kpi")
+        assert [x.inner_text().upper() for x in p.locator(".kpi .label").all()] == labels, uid

@@ -50,8 +50,26 @@
   }
 
   function kpi(label, n, cap) { return '<div class="kpi"><div class="label">' + CG.esc(label) + '</div><div class="num">' + CG.esc(n) + '</div><div class="cap">' + CG.esc(cap) + '</div></div>'; }
-  var kpis = '<div class="grid g4" style="margin-bottom:16px">' + kpi('Waiting for review', c.awaiting_review + c.escalated, 'a person must decide') + kpi('Needs info', c.needs_info, 'waiting for the requester') +
-    kpi('High or critical risk', openHigh, 'open cases') + kpi('Answered automatically', c.auto_answered, 'no person needed') + '</div>';
+  // role-specific KPIs: only counts this role can act on
+  var today = new Date().toDateString();
+  var cnt = function (name) { return audit.events.filter(function (e) { return e.event === name; }).length; };
+  var tiles;
+  if (role === 'ops_employee') {
+    tiles = [['Needs your action', cases.filter(function (x) { return x.bucket === 'action'; }).length, 'add details or send it on'],
+      ['With reviewers', cases.filter(function (x) { return x.state === 'in_review' || x.state === 'escalated'; }).length, 'a person is deciding'],
+      ['Answered automatically', c.auto_answered, 'no person needed'], ['Done', cases.filter(function (x) { return x.bucket === 'done'; }).length, 'finished']];
+  } else if (role === 'knowledge_owner') {
+    tiles = [['Policy updates waiting', prs.length, 'for your decision'], ['Conflicts', lint.filter(function (x) { return x.code === 'CONTRADICTION'; }).length, 'policies that disagree'],
+      ['Gaps', lint.filter(function (x) { return x.code === 'ESCALATION_HOTSPOT'; }).length, 'topics without a policy']];
+  } else if (role === 'auditor') {
+    tiles = [['Blocked attempts', cnt('guard_blocked'), 'stopped by the safety check'], ['Reveals', cnt('record_revealed'), 'personal details shown'],
+      ['Denials', cnt('review_denied') + cnt('pr_denied') + cnt('reset_denied') + cnt('record_lookup_denied'), 'refused actions']];
+  } else {
+    var mineQ = queue.filter(function (q) { return q.can_approve; });
+    tiles = [['Waiting for you', mineQ.length, 'you can approve these'], ['Forwarded today', cases.filter(function (x) { return x.forwarded_at && new Date(x.forwarded_at).toDateString() === today; }).length, 'sent to a team by requesters'],
+      ['High risk', openHigh, 'open cases'], ['Overdue', queue.filter(function (q) { return q.age_hours > 24; }).length, 'waiting more than 24 h']];
+  }
+  var kpis = '<div class="grid g' + tiles.length + '" style="margin-bottom:16px">' + tiles.map(function (t) { return kpi(t[0], t[1], t[2]); }).join('') + '</div>';
 
   // ------------------------------------------------------------ trust ladder: one line per type, thin progress bar
   var T = m.trust_thresholds;

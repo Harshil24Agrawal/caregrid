@@ -250,7 +250,7 @@ def case_row(c: Case, user: User | None = None) -> dict:
         "approver_role": c.approver_role.value if c.approver_role else None, "age_hours": hours_since(c.created_at),
         "created_at": c.created_at.isoformat(), "reason_codes": [r.value for r in c.reason_codes], "requester": c.requester.name,
         "trust_level": c.trust_level, "summary": one_liner(c),
-        "problem": problem_line(c), "bucket": bucket(c, user) if user else None, "next_short": next_short(c, user) if user else None,
+        "forwarded_at": c.forwarded_at.isoformat() if c.forwarded_at else None, "problem": problem_line(c), "bucket": bucket(c, user) if user else None, "next_short": next_short(c, user) if user else None,
     }
 
 
@@ -790,12 +790,14 @@ def api_demo_guide(user: User = Depends(actor)):
          "buttons": [fill("Asha: fill the request", "U1", D.S1)]},
         {"key": "HOWTO", "title": "How-to from a workflow", "talk": "A 'how do I' question is answered with the workflow's own steps, built by code, citing the workflow and its policy.",
          "buttons": [fill("Asha: fill the request", "U1", HOWTO_TEXT)]},
-        {"key": "S2", "title": "S2 Missing details", "talk": "Personal data is masked, and every missing detail is asked for in one numbered message.",
-         "buttons": [fill("Asha: fill the request", "U1", D.S2)]},
-        {"key": "S5", "title": "S5 High-cost equipment (CASE-1024)", "talk": "A senior reviewer sees the whole story and approves; the requester sees the same case with the amount and evidence hidden.",
+        {"key": "S2", "title": "S2 Missing details", "talk": "Personal data is masked and every missing detail is asked for once. Asha then adds the details in a form, and the case moves on.",
+         "buttons": [fill("Asha: fill the request", "U1", D.S2), {"label": "Asha: add the missing details", "act_as": "U1", "kind": "page", "href": "case.html?show=action"}]},
+        {"key": "S5", "title": "S5 High-cost equipment (CASE-1024)", "talk": "Asha sent it to Senior Ops; the senior reviewer sees 'Forwarded by Asha' with her note, the whole story, and approves. The requester sees the same case with the amount and evidence hidden.",
          "buttons": [case_("Rahul: open CASE-1024", "U4", "CASE-1024"), case_("Asha: open the same case", "U1", "CASE-1024")]},
         {"key": "S6", "title": "S6 The system learns", "talk": "A human-approved decision becomes a precedent, and the next similar request is scored higher.",
-         "buttons": [fill("Asha: fill name change 1", "U1", D.S6A), fill("Asha: fill name change 2", "U1", D.S6B)]},
+         "buttons": [fill("Asha: fill name change 1", "U1", D.S6A), fill("Asha: fill name change 2", "U1", D.S6B),
+                     {"label": "Asha: send it to the team", "act_as": "U1", "kind": "page", "href": "case.html?show=action"},
+                     {"label": "Vikram: approve it", "act_as": "U2", "kind": "page", "href": "case.html?show=action"}]},
         {"key": "S7", "title": "S7 Conflict and policy fix", "talk": "Two policies disagree; a specialist proposes retiring one, the knowledge owner approves, and the conflict disappears.",
          "buttons": [fill("Asha: fill the portal reset", "U1", D.S3), {"label": "Meera: policy updates", "act_as": "U5", "kind": "page", "href": "knowledge.html?tab=prs"}]},
         {"key": "S8", "title": "S8 Health ID", "talk": "A valid CareGrid Health ID links the case to the patient's timeline; a wrong checksum is sent back to be re-checked.",
