@@ -36,58 +36,145 @@ def seed_trust(store: Store, data_dir: Path) -> int:
     return len(rows)
 
 
-def seed_historical_cases(store: Store, data_dir: Path) -> int:
-    """Cases inserted directly (they pre-date this run): backdated, in mixed states, each with its audit trail."""
-    users, now, n = load_users(data_dir), datetime.now(), 0
-    for seed in _load(data_dir, "seed_cases.json"):
-        if seed["id"] == DEMO_CASE_ID:
-            continue
-        created = now - timedelta(hours=seed["hours_ago"])
-        final = State(seed["state"])
-        entered = min(created + timedelta(minutes=20), now)
-        history = [(State.NEW, created), (State.CLASSIFIED, created + timedelta(minutes=2)), (State.PROPOSED, created + timedelta(minutes=10))]
-        if final not in (State.NEW, State.CLASSIFIED, State.PROPOSED):
-            history.append((final, entered))
-        risk = Risk(seed["risk"])
-        rtype = seed["request_type"]
-        case = Case(
-            id=seed["id"], created_at=created, requester=users[seed["requester_id"]], channel=Channel(seed["channel"]),
-            masked_text=seed["text"], state=final, state_history=history,
-            classification=Classification(request_type=rtype, llm_confidence=0.9, rules_type=rtype, extracted_fields=seed["fields"],
-                                          model_used="seed"),
-            rules=RuleResult(risk=risk, route_team=seed["assigned_team"], approver_role=APPROVER_BY_RISK[risk],
-                             required_fields=["effective_date"] if final == State.NEEDS_INFO else [],
-                             missing_fields=["effective_date"] if final == State.NEEDS_INFO else []),     # NEEDS_INFO always means something is missing
-            proposal=Proposal(decision_code=DecisionCode.REQUEST_MISSING_INFO if final == State.NEEDS_INFO else DecisionCode.ROUTE_TO_TEAM,
-                              route_team=seed["assigned_team"], answer_text="Seeded historical case.",
-                              questions_for_requester=(["Please provide the effective date (format: YYYY-MM-DD)."] if final == State.NEEDS_INFO else []),
-                              summary_for_reviewer="Seeded historical case for queue ageing."),
-            routing="human", assigned_team=seed["assigned_team"], approver_role=APPROVER_BY_RISK[risk], related=seed["related"])
-        store.save_case(case)
-        log(store, "request_received", case.requester, case.id, ts=created, channel=case.channel.value, pii_types=[], seeded=True)
-        for (a, _), (b, ts) in zip(history, history[1:]):
-            log(store, "state_changed", None, case.id, ts=ts, **{"from": a.value, "to": b.value})
-        n += 1
-    return n
+# The history is REAL: every text goes through the actual pipeline, every forward / withdrawal / decision through the real workflow functions, and
+# the finished case is then moved back in time. (plan = what happened after the pipeline; who = the requester; hours = how long ago it was asked)
+#   ready = waits for the requester | forward = sent to the team | withdraw | approve / reject / escalate = a reviewer decided (channels as given)
+HISTORY = [
+    # id, requester, kind, plan, hours ago
+    ("REQ-0001", "U1", "address", ("forward",), 135),
+    ("REQ-0002", "U1", "name", ("forward",), 21),
+    ("REQ-0003", "U1", "portal_no_email", (), 33),
+    ("REQ-0004", "U1", "general1", (), 11),
+    ("REQ-0005", "U1", "claim", ("approve", "U3", ["portal"]), 17),
+    ("REQ-0006", "U1", "complaint_slow", ("escalate", "U3"), 18),
+    ("REQ-0007", "U1", "address", ("forward", "approve", "U2", ["portal"]), 16),
+    ("REQ-0008", "U1", "name", ("ready",), 19),
+    ("REQ-0009", "U1", "portal", ("forward", "approve", "U7", []), 21),
+    ("REQ-0010", "U1", "general2", (), 10),
+    ("REQ-0011", "U1", "claim", (), 10),
+    ("REQ-0012", "U1", "complaint_regulator", (), 27),
+    ("REQ-0013", "U1", "address_no_address", (), 109),
+    ("REQ-0014", "U1", "address", ("forward", "reject", "U2"), 27),
+    ("REQ-0015", "U1", "portal", ("withdraw",), 2),
+    ("REQ-0016", "U1", "prior_auth", (), 31),
+    ("REQ-0017", "U1", "claim", ("approve", "U3", []), 25),
+    ("REQ-0018", "U1", "complaint_slow", (), 35),
+    ("REQ-0019", "U1", "address", ("forward", "approve", "U2", []), 32),
+    ("REQ-0020", "U1", "name", ("forward",), 32),
+]
+NAME_CHANGES = [("Anita Desai", "Anita Kulkarni"), ("Farah Khan", "Farah Siddiqui"), ("Neeraj Gupta", "Neeraj Bhatia"), ("Sunil Verma", "Sunil Rao")]   # masked on the way in
+
+
+def _history_text(kind: str, i: int, prof: dict, today, patient: int = 0) -> str:
+    """A realistic request written with synthetic raw details; the guard masks it like any other request."""
+    prov, mem = prof["providers"][i % len(prof["providers"])], prof["members"][patient % 3]    # members 0..2 are the patients with timelines
+    npi, when = prov["npi"], (today + timedelta(days=14 + i)).isoformat()
+    doc = ["W-9", "bank letter", "licence copy"][i % 3]
+    addr = prof["other_addresses"][i % len(prof["other_addresses"])]
+    clm = f"CLM-{40000000 + 1357911 * (i + 1) % 59999999:08d}"
+    if kind == "address":
+        return f"Please update the billing address for Dr. {prov['name']} (NPI {npi}) to {addr}, effective {when}. {doc} attached."
+    if kind == "address_no_address":
+        return f"Please update the billing address for Dr. {prov['name']} (NPI {npi}), effective {when}. {doc} attached."
+    if kind == "name":
+        old, new = NAME_CHANGES[i % len(NAME_CHANGES)]
+        return f"Provider NPI {npi} legally changed name from {old} to {new}, {['W-9', 'bank_letter', 'licence_copy'][i % 3]} attached."
+    if kind == "portal":
+        return f"A clinic staff member is locked out of the provider portal, email desk{i}@clinic{i}.example, provider NPI {npi}. Can we reset it?"
+    if kind == "portal_no_email":
+        return f"A clinic user is locked out of the provider portal, provider NPI {npi}. Can we reset it?"
+    if kind == "general1":
+        return "What supporting documents are accepted for provider record changes?"
+    if kind == "general2":
+        return "Which documents can a provider send as proof for a record update?"
+    if kind == "claim":
+        return f"Member {mem['name']} (patient {mem['health_id']}) is asking for the status of claim {clm}, submitted three weeks ago."
+    if kind == "complaint_regulator":
+        return (f"Member {mem['name']} (patient {mem['health_id']}) complains that their wheelchair claim {clm} was denied twice without "
+                f"explanation and threatens to escalate to the regulator.")
+    if kind == "complaint_slow":
+        return f"Member {mem['name']} (patient {mem['health_id']}) complains about the slow enrollment turnaround: the update has been pending for six weeks."
+    if kind == "prior_auth":
+        return f"What is the status of prior authorization PA-2026-{10000 + i:05d}?"
+    raise KeyError(kind)
+
+
+def seed_historical_cases(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> int:
+    """~20 historical cases through the REAL pipeline and workflow (see HISTORY), backdated. No direct inserts."""
+    from caregrid import alerts, config
+    from caregrid.models import ReviewAction, ReviewDecision
+    from caregrid.workflow.decisions import submit_decision
+    from caregrid.workflow.forwarding import forward_case, withdraw_case
+
+    users, prof = load_users(data_dir), _load(data_dir, "profiles.json")
+    patients_seen = 0
+    alerts.SUPPRESSED = True
+    mode, config.REQUIRE_CONFIRMATION = config.REQUIRE_CONFIRMATION, True               # history is made with the real routing, whatever the process default is
+    try:
+        for i, (cid, who, kind, plan, hours) in enumerate(HISTORY):
+            requester = users[who]
+            about_a_patient = kind.startswith(("claim", "complaint"))
+            case = run(_history_text(kind, i, prof, config.TODAY, patients_seen), requester, store, brain, llm, case_id=cid)
+            patients_seen += about_a_patient                                         # claims and complaints rotate over the three patients
+            for step in _steps(plan):
+                if step[0] == "forward" and case.state == State.PROPOSED:
+                    case = forward_case(cid, requester, "", store)
+                elif step[0] == "withdraw":
+                    case = withdraw_case(cid, requester, store)
+                elif step[0] in ("approve", "reject", "escalate"):
+                    action = {"approve": ReviewAction.APPROVE, "reject": ReviewAction.REJECT, "escalate": ReviewAction.ESCALATE}[step[0]]
+                    if case.state == State.PROPOSED:                                  # the requester sends it on first
+                        case = forward_case(cid, requester, "", store)
+                    case = submit_decision(ReviewDecision(case_id=cid, reviewer=users[step[1]], action=action, save_as_precedent=False,
+                                                          channels=[Channel(c) for c in (step[2] if len(step) > 2 else [])],
+                                                          note="Checked against the policy." if action != ReviewAction.APPROVE else ""),
+                                           store, brain, llm)
+            store.shift_time(cid, timedelta(hours=hours))
+    finally:
+        alerts.SUPPRESSED, config.REQUIRE_CONFIRMATION = False, mode
+    return len(HISTORY)
+
+
+def _steps(plan: tuple) -> list[tuple]:
+    """('forward', 'approve', 'U2', ['portal']) -> [('forward',), ('approve', 'U2', ['portal'])]"""
+    out, i = [], 0
+    while i < len(plan):
+        if plan[i] in ("approve", "reject", "escalate"):
+            n = 3 if plan[i] == "approve" else 2
+            out.append(tuple(plan[i:i + n]))
+            i += n
+        else:
+            out.append((plan[i],))
+            i += 1
+    return out
 
 
 def seed_demo_case(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> Case:
     """CASE-1024 goes through the REAL pipeline with a fixed id; related evidence keys and age are then attached."""
     seed = next(s for s in _load(data_dir, "seed_cases.json") if s["id"] == DEMO_CASE_ID)
     user = load_users(data_dir)[seed["requester_id"]]
-    case = run(seed["text"], user, store, brain, llm, channel=Channel(seed["channel"]), case_id=DEMO_CASE_ID)
-    shift = timedelta(hours=seed["hours_ago"])
-    case.created_at = case.created_at - shift
-    case.state_history = [(s, t - shift) for s, t in case.state_history]
+    from caregrid import config
+
+    mode, config.REQUIRE_CONFIRMATION = config.REQUIRE_CONFIRMATION, True
+    try:
+        case = run(seed["text"], user, store, brain, llm, channel=Channel(seed["channel"]), case_id=DEMO_CASE_ID)
+    finally:
+        config.REQUIRE_CONFIRMATION = mode
     case.related = seed["related"]
     store.save_case(case)
+    from caregrid import alerts
     from caregrid.workflow.forwarding import forward_case
 
     if case.state == State.PROPOSED:                           # the requester confirms the handoff, as a real user would
-        case = forward_case(case.id, user, "Vendor quote attached; the cost is above the usual limit.", store)
-    return case
+        was, alerts.SUPPRESSED = alerts.SUPPRESSED, True
+        try:
+            case = forward_case(case.id, user, "Vendor quote attached; the cost is above the usual limit.", store)
+        finally:
+            alerts.SUPPRESSED = was
+    store.shift_time(case.id, timedelta(hours=seed["hours_ago"]))
+    return store.get_case(case.id)
 
 
 def seed_all(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> dict[str, int]:
-    return {"trust": seed_trust(store, data_dir), "historical_cases": seed_historical_cases(store, data_dir),
+    return {"trust": seed_trust(store, data_dir), "historical_cases": seed_historical_cases(store, brain, llm, data_dir),
             "demo_case": 1 if seed_demo_case(store, brain, llm, data_dir) else 0}

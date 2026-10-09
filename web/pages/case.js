@@ -129,7 +129,7 @@
       return '<div class="chk ' + r.status + '"><span class="ck" aria-hidden="true">' + MARK[r.status] + '</span><span class="sr-only">' + (r.status === 'ok' ? 'Passed' : r.status === 'bad' ? 'Failed' : 'Warning') + ': </span><b>' + CG.esc(r.label) + '</b><span class="muted">' + CG.esc(r.text) + '</span></div>';
     }).join('');
     var conf = d.confidence ? '<span class="pill-conf">Confidence ' + d.confidence.score + ' \u00b7 ' + CG.esc(CG.human(d.confidence.band)) + '</span>' : '';
-    return '<div class="card story" id="summary"><h2>The problem</h2><p>' + CG.esc(st.problem) + '</p></div>' +
+    return '<div class="card story" id="summary"><h2>The problem</h2><p>' + CG.esc(st.problem) + '</p>' + (st.quote ? '<blockquote class="quote" id="quote" title="' + CG.esc(st.quote) + '">“' + CG.esc(st.quote) + '”</blockquote>' : '') + '</div>' +
       '<div class="card story" id="checked"><h2>What CareGrid checked</h2>' + checked + '</div>' +
       '<div class="card story" id="decision"><h2>Decision</h2><p>' + CG.esc(d.text) + ' ' + conf + '</p></div>' +
       '<div class="card story" id="next"><h2>Next steps</h2><ol>' + st.next_steps.map(function (x) { return '<li>' + CG.esc(x) + '</li>'; }).join('') + '</ol></div>';

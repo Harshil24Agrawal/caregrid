@@ -505,11 +505,13 @@ def story_checks(web, p, cid, who):
 
 def test_case_story_sections_for_demo_case_s2_refused_and_answered(web):
     p = web.page
-    t = story_checks(web, p, "CASE-1024", "U4")
+    dme = case_id_of(web.submit("Equipment E1390 (oxygen concentrator) requested for member M12345678, estimated cost ₹62,500, prescription on file.", "U1"))
+    t = story_checks(web, p, dme, "U4")
     assert "oxygen concentrator (E1390)" in t and "above the" in t and "Policy found" in t and "KA-40 v1" in t
     assert "Send to Senior Operations Review: a senior reviewer must approve." in t and "Confidence" in t
     assert "You: approve or reject in the Decide panel." in t and "On approval:" in t and "saved as a precedent" in t
-    t = story_checks(web, p, "CASE-1024", "U1")
+    assert "Forwarded by Asha" in t and "“Equipment E1390" in t                                          # who sent it, and what she wrote (masked)
+    t = story_checks(web, p, dme, "U1")
     assert "You: nothing to do." in t and "62,500" not in t
     s2 = case_id_of(web.submit(S2, "U1"))
     t = story_checks(web, p, s2, "U1")

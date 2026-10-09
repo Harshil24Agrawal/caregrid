@@ -239,7 +239,7 @@ def test_nothing_in_sqlite_matches_a_member_id_pattern(paths, brain, tmp_path):
     store = new_store(paths, db)
     from caregrid.seed import seed_demo_case, seed_historical_cases
 
-    seed_historical_cases(store, paths / "data")
+    seed_historical_cases(store, brain, MockLLM(), paths / "data")
     seed_demo_case(store, brain, MockLLM(), paths / "data")
     run(S4B, ASHA, store, brain, MockLLM())
     run("Tell me about member M-12345678 and M 87654321", ASHA, store, brain, MockLLM())

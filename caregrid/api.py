@@ -603,7 +603,12 @@ def api_assistant(case_id: str, body: AssistantIn, user: User = Depends(actor)):
     sources = [] if reply.restricted or reply.refused else [s for pid in reply.citations if (s := source_for_citation(brain, pid, case)) is not None]
     for s in sources:
         s["title"] = check_output(s["title"] or "", user)[1]
-    text = reply.text + ("\n\nSources: " + "; ".join(format_source(s) for s in sources) if sources else "")     # same line the Case page shows
+    if sources:
+        text = reply.text + "\n\nSources: " + "; ".join(format_source(s) for s in sources)                        # same line the Case page shows
+    elif reply.restricted or reply.refused:
+        text = reply.text
+    else:
+        text = reply.text + f"\n\nSources: the record of {case_id} (no page was needed)"
     return {"text": text, "sources": sources, "citations": reply.citations, "restricted": reply.restricted, "refused": reply.refused,
             "model_used": reply.model_used, "tier": reply.tier, "chips": reply.chips}
 

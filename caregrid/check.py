@@ -100,6 +100,31 @@ def _pytest_summary() -> tuple[bool, str]:
     return proc.returncode == 0, (lines[-1] if lines else "no pytest output") + (f"; {', '.join(failed[:5])}" if failed else "")
 
 
+def story_violations(store, brain, users) -> list[str]:
+    """Every case tells a coherent story: a non-empty problem, a decision that never says "0 more details", flags that agree with the reason codes
+    (a safety reason code shows a flag, no reason code shows none) and a timeline of at least two entries."""
+    from caregrid.insights.story import story, timeline
+    from caregrid.models import ReasonCode
+
+    viewer = next(u for u in users.values() if u.role.value == "senior_reviewer")
+    names = {u.id: u.name for u in users.values()}
+    safety = {"CLINICAL", "ACCOUNT_SPECIFIC", "SENSITIVE", "ACCESS_DENIED"}
+    out = []
+    for c in store.list_cases():
+        s = story(c, brain, viewer)
+        flags = next((r for r in s["checks"] if r["label"] == "Flags"), None)
+        wants_flag = bool({r.value for r in c.reason_codes} & safety)
+        if not s["problem"].strip():
+            out.append(f"{c.id}: empty problem")
+        if "0 more detail" in s["decision"]["text"] or "send 0" in s["decision"]["text"]:
+            out.append(f"{c.id}: decision says '0 more details'")
+        if c.classification and c.classification.model_used != "guard" and wants_flag != bool(flags and flags["status"] != "ok"):
+            out.append(f"{c.id}: flags disagree with reason codes {sorted(r.value for r in c.reason_codes)}")
+        if len(timeline(c, store.list_audit(c.id), names, brain)) < 2:
+            out.append(f"{c.id}: timeline has fewer than 2 entries")
+    return out
+
+
 def state_rule_violations(store) -> list[str]:
     """A1: a case's state always matches its rules. NEEDS_INFO means something is missing or invalid (and says what to send); a case with
     something missing never sits answered / proposed / in review (unless a safety override sent it straight to a person)."""
@@ -173,6 +198,12 @@ def run_check(echo: Callable[[str], None] = print, skip_pytest: bool = False) ->
     bad_state = [f"{label}/{v}" for label, st, _ in groups for v in state_rule_violations(st)]
     item("state matches rules in every case (needs_info <=> something missing)", not bad_state,
          f"{total} cases checked" + (f"; {len(bad_state)} violation(s), e.g. {bad_state[:3]}" if bad_state else ""))
+
+    brain_for_story = Brain(config.BRAIN_DIR)
+    users_for_story = load_users(config.DATA_DIR)
+    bad_story = [f"{label}/{v}" for label, st, _ in groups for v in story_violations(st, brain_for_story, users_for_story)]
+    item("every case tells a coherent story (problem, decision, flags, timeline)", not bad_story,
+         f"{total} cases checked" + (f"; {len(bad_story)} problem(s), e.g. {bad_story[:3]}" if bad_story else ""))
 
     failed = [s.key for s in scenarios if not s.passed]
     item("demo 12/12 on mock", not failed and len(scenarios) == 12, f"{len(scenarios) - len(failed)}/{len(scenarios)} scenarios passed"

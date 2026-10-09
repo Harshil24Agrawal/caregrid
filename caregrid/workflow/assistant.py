@@ -147,65 +147,121 @@ def _cite(ids: list[str]) -> str:
     return " ".join(f"[{i}]" for i in dict.fromkeys(ids))
 
 
-def deterministic_answer(question: str, ctx: Context, case: Case, user: User, store: Store) -> tuple[str, list[str]]:
-    """Built from the structured context only: no model, no invented facts."""
+def _first_sentence(text: str, limit: int = 220) -> str:
+    one = " ".join((text or "").split())
+    cut = re.split(r"(?<=[.!?])\s", one, maxsplit=1)[0]
+    return cut if len(cut) <= limit else cut[: limit - 1].rstrip() + "\u2026"
+
+
+def _intent(question: str) -> str:
+    """The closest chip for a question: prepare | related | next | explain | policy | why."""
+    q = question or ""
+    if _PREPARE.search(q):
+        return "prepare"
+    if _RELATED.search(q):
+        return "related"
+    if _NEXT.search(q):
+        return "next"
+    if _EXPLAIN.search(q) and not _WHY.search(q):
+        return "explain"
+    if _POLICY.search(q) and not _WHY.search(q):
+        return "policy"
+    return "why"
+
+
+_COMPONENT = {"policy": "policy evidence", "precedent": "similar past cases", "fields": "required details", "clarity": "request clarity",
+              "no_conflict": "no policy conflict"}
+
+
+def deterministic_answer(question: str, ctx: Context, case: Case, user: User, store: Store, brain: Brain | None = None) -> tuple[str, list[str]]:
+    """Built from the case story and the role-filtered context only: no model, no invented facts. Every answer is a few plain lines that cite
+    the pages they rest on (the API adds the 'Sources' line). The same text answers the suggested chips and any free-text question when the model
+    is the mock or unavailable (the closest chip wins)."""
+    from caregrid.insights.explain import REASON_PLAIN, _team_name
+    from caregrid.insights.story import story as build_story
+
     f = ctx.facts
-    cites = [c[0] for c in f["cites"]]
+    full = f["full"]
+    brain = brain or Brain(config.BRAIN_DIR)
+    st = build_story(case, brain, user)
+    prop, rules = case.proposal, case.rules
+    pols = [c for c in (prop.citations if prop else []) if c.page_type.value == "policy"]
+    wfs = [c for c in (prop.citations if prop else []) if c.page_type.value == "workflow"]
+    cites = [c.page_id for c in (prop.citations if prop else [])]
     inv = f["invoices"] if f["billing"] else []
-    if _PREPARE.search(question):
-        parts = ["Handoff checklist:"]
-        parts.append(f"Proposed: {f.get('decision', 'n/a')} -> {f.get('team')}.")
-        if f.get("missing") or f.get("invalid"):
-            parts.append("Still missing: " + ", ".join(list(f.get("missing", [])) + list(f.get("invalid", {}))) + ".")
-        elif f["full"]:
-            parts.append("All required fields are present.")
+    team = _team_name(brain, case.assigned_team)
+    role = (case.approver_role.value if case.approver_role else "person").replace("_", " ")
+    kind = _intent(question)
+    ref = lambda c: f"[{c.page_id}{f' v{c.version}' if c.version else ''}]"      # noqa: E731
+
+    def rule_line(c) -> str:
+        page = brain.get(c.page_id, c.version) if c.version else brain.get(c.page_id)
+        return f"{ref(c)} {c.title}: {_first_sentence(page.body) if page else 'see the page'}"
+
+    if kind == "prepare":
+        flagged = [r["label"] + " (" + r["text"] + ")" for r in st["checks"] if r["status"] != "ok"]
+        lines = [f"Approval brief for {case.id}:",
+                 f"1. Request: {st['problem']}",
+                 "2. Checks: " + (f"{sum(r['status'] == 'ok' for r in st['checks'])} of {len(st['checks'])} passed; to look at: " + "; ".join(flagged) if flagged else "all passed") + ".",
+                 f"3. Recommendation: {st['decision']['text']}" + (f" Confidence {st['decision']['confidence']['score']} ({st['decision']['confidence']['band']})." if st["decision"]["confidence"] else ""),
+                 "4. " + ("You may approve this case." if can_approve(user, case) else "You cannot approve this case with your role: " + (f"a {role} decides.")),
+                 f"5. After approval: {(st['next_steps'][1] if len(st['next_steps']) > 1 else 'nothing further.').removeprefix('On approval: ')}"]
         if f.get("conflicts"):
-            parts.append("Conflicts to resolve: " + "; ".join(f["conflicts"]) + ".")
-        parts.append("You may approve this case." if can_approve(user, case) else "You cannot approve this case with your role.")
-        return " ".join(parts) + " " + _cite(cites + inv), cites + inv
-    if _RELATED.search(question):
+            lines.append("6. Conflicts to resolve first: " + "; ".join(f["conflicts"]) + ".")
+        return "\n".join(lines), cites + inv
+    if kind == "related":
+        precs = [p for p in (prop.citations if prop else []) if p.page_type.value == "precedent"]
         others = [c for c in visible_cases(user, store) if c.id != case.id and c.classification and case.classification
                   and c.classification.request_type == case.classification.request_type][:5]
-        precs = [c[0] for c in f["cites"] if c[2] == "precedent"]
-        bits = []
+        lines = []
         if others:
-            bits.append("Other visible cases of this type: " + ", ".join(f"{c.id} ({c.state.value})" for c in others) + ".")
+            lines.append("Other cases of this type you can see:")
+            lines += [f"- {c.id} ({c.state.value.replace('_', ' ')}): {_first_sentence(c.masked_text, 90)}" for c in others]
         if precs:
-            bits.append("Precedents considered: " + _cite(precs) + ".")
-        return (" ".join(bits) or NO_EVIDENCE + " No related cases are visible to you."), precs
-    if _NEXT.search(question):
-        steps = f.get("next_steps") or []
-        text = "Next steps: " + "; ".join(steps) + "." if steps else NO_EVIDENCE + " The proposal lists no next steps."
-        return text + " " + _cite(cites), cites
-    if _EXPLAIN.search(question) and not _WHY.search(question):
-        bits = [f"The recommendation is {f.get('decision', 'n/a')} -> {f.get('team')}."]
-        if f.get("confidence"):
-            bits.append(f"Confidence {f['confidence'][0]} ({f['confidence'][1]}).")
+            lines.append("Past decisions this case was compared with:")
+            for c in precs[:4]:
+                pr = brain.get_precedent(c.page_id)
+                lines.append(f"- [{c.page_id}] " + (f"{pr.decision_code.value.replace('_', ' ')} to {pr.route_team or 'the team'}; outcome: {_first_sentence(pr.outcome, 110)}" if pr else "past decision"))
+        return ("\n".join(lines) if lines else NO_EVIDENCE + " No related cases or past decisions are visible to you."), [c.page_id for c in precs]
+    if kind == "next":
+        return "What to do next:\n" + "\n".join(f"{i}. {x}" for i, x in enumerate(st["next_steps"], 1)), cites
+    if kind == "explain":
+        d = st["decision"]
+        lines = [f"The recommendation: {d['text']}"]
+        if d["confidence"]:
+            lines.append(f"Confidence is {d['confidence']['score']} ({d['confidence']['band']}).")
         if f.get("breakdown"):
-            bits.append("Parts: " + ", ".join(f"{k} {v}" for k, v in f["breakdown"].items()) + ".")
-        if f.get("summary"):
-            bits.append(f["summary"])
-        return " ".join(bits) + " " + _cite(cites), cites
-    if _POLICY.search(question) and not _WHY.search(question):
-        pol = [c for c in f["cites"] if c[2] == "policy"]
-        if not pol:
-            return NO_EVIDENCE + " No policy was cited for this case.", []
-        return "Policies cited: " + "; ".join(f"[{c[0]}{f' v{c[1]}' if c[1] else ''}] {c[3]}" for c in pol) + ".", [c[0] for c in pol]
-    # default and "why": reasons, risk reasons, conflicts
-    bits = []
+            lines.append("It comes from " + ", ".join(f"{_COMPONENT.get(k, k)} {v}/{ {'policy': 30, 'precedent': 25, 'fields': 20, 'clarity': 15, 'no_conflict': 10}.get(k, 0) }" for k, v in f["breakdown"].items()) + ".")
+            if rules and rules.conflicts:
+                lines.append("A policy conflict caps the confidence at Medium.")
+        else:
+            lines.append("The breakdown of the score is limited for your role.")
+        if full and f.get("summary") and prop and not prop.model_used.startswith(("mock", "deterministic", "seed")):
+            lines.append(f["summary"])
+        return " ".join(lines[:2]) + ("\n" + " ".join(lines[2:]) if len(lines) > 2 else ""), cites
+    if kind == "policy":
+        if not pols:
+            return NO_EVIDENCE + " No approved policy was cited for this case.", []
+        return "Policies that apply:\n" + "\n".join("- " + rule_line(c) for c in pols), [c.page_id for c in pols]
+    # why is it flagged
+    lines = ["This case is flagged because:"]
+    plain = [REASON_PLAIN[r] for r in f["reasons"] if r in REASON_PLAIN and not (r == "HIGH_RISK" and f.get("risk"))]
+    lines += [f"- {x[:1].upper() + x[1:]}." for x in plain] or ["- It needs a person to decide."]
     if f.get("risk"):
-        bits.append(f"Risk is {f['risk'].upper()}.")
-    if f["reasons"]:
-        bits.append("Reason codes: " + ", ".join(f["reasons"]) + ".")
-    for r in f.get("risk_reasons", []):
-        bits.append(r.rstrip(".") + ".")
+        lines.append(f"- Risk is {f['risk'].upper()}" + (": " + "; ".join(r.rstrip(".") for r in f.get("risk_reasons", [])) if full and f.get("risk_reasons") else "") + ".")
     for c in f.get("conflicts", []):
-        bits.append("Conflict: " + c + ".")
-    if not f["full"]:
-        bits.append("Detailed reasoning is limited for your role.")
-    if not bits:
-        return NO_EVIDENCE, []
-    return " ".join(bits) + " " + _cite(cites + inv), cites + inv
+        lines.append("- Policy conflict: " + c + ".")
+    lines.append(f"It goes to {team}; a {role} must approve.")
+    if inv:
+        lines.append("Evidence on file: " + ", ".join(inv) + ".")
+    for c in pols[:2]:
+        lines.append(rule_line(c))
+    wf = brain.get(wfs[0].page_id) if wfs else None
+    if wf is not None and wf.meta.get("steps"):
+        lines.append(f"[{wf.id}] {wf.title}: {str(wf.meta['steps'][0]).rstrip('.')}.")
+    if not full:
+        lines.append("More detail is limited for your role.")
+    return "\n".join(lines), cites + inv
 
 
 def ask(case: Case, question: str, user: User, brain: Brain, store: Store, llm: LLM) -> Reply:
@@ -219,8 +275,9 @@ def ask(case: Case, question: str, user: User, brain: Brain, store: Store, llm: 
     if _restricted_for(question, case, user):
         return Reply(RESTRICTED, restricted=True)
     ctx = build_context(case, user, brain, store)
-    text, cites = deterministic_answer(question, ctx, case, user, store)
+    text, cites = deterministic_answer(question, ctx, case, user, store, brain)
     model, tier = "deterministic", None
+    ctx.text += "\n\nCASE STORY (facts built by code for this viewer; answer from these and cite their ids):\n" + text
     wants_strong = bool(_WHY.search(question) or _EXPLAIN.search(question))
     if config.LLM_PROVIDER != "mock":
         tier = "strong" if wants_strong else "light"

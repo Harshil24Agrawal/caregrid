@@ -141,3 +141,6 @@ table.compact td.ellip { min-width: 120px; }
 
 .tl { list-style: none; margin: 0 0 6px; padding: 0; font-size: 14px; } .tl li { padding: 2px 0; } #forward-note { flex-basis: 100%; }
 .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } @media (max-width: 1000px) { .g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+blockquote.quote { margin: 6px 0 0; padding: 4px 10px; border-left: 3px solid var(--line); color: var(--muted); font-size: 13px; line-height: 1.4; }
+blockquote.quote { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

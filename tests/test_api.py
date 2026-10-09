@@ -239,8 +239,8 @@ def test_pages_lint_scorecard_metrics_audit_comms(client):
     assert client.get("/api/metrics", headers=H["vikram"]).json()["counts"]["total"] < m["counts"]["total"]    # only his team's cases
     sc = client.get("/api/scorecard", headers=H["asha"]).json()
     assert set(sc) == {"main", "heldout"}
-    a_all = client.get("/api/audit", headers=H["arjun"]).json()["events"]
-    a_asha = client.get("/api/audit", headers=H["asha"]).json()["events"]
+    a_all = client.get("/api/audit?limit=2000", headers=H["arjun"]).json()["events"]
+    a_asha = client.get("/api/audit?limit=2000", headers=H["asha"]).json()["events"]
     assert len(a_all) > len(a_asha) > 0 and all(e["case_id"] for e in a_asha)
     assert client.get("/api/audit?event=guard_blocked", headers=H["arjun"]).json()["events"]
     assert client.get("/api/comms", headers=H["arjun"]).status_code == 200

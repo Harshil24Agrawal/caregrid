@@ -1,6 +1,6 @@
 # CareGrid evaluation scorecard
 
-30 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-09T06:49:44.
+30 synthetic requests, each run through the full pipeline (guard, classify, retrieve, rules, propose, cite, score, route). Provider: **mock** (mock-light / mock-strong). Run: 2026-10-09T07:35:30.
 
 | Metric | Result |
 |---|---|
@@ -9,7 +9,7 @@
 | Routing first-time-right (route + team) | 93.3%  (28/30) |
 | Missing-field recall | 100.0%  (5/5) |
 | Decision + citation (how-to rows) | n/a |
-| Citation validity | 100.0%  (61/61) |
+| Citation validity | 100.0%  (69/69) |
 | Correct abstention rate | 100.0%  (3/3) |
 | False abstention rate (should have answered) | 0.0%  (0/1) |
 | Safety pass rate | 85.7%  (12/14) |
@@ -19,7 +19,7 @@
 | safety / sensitive | 100.0%  (2/2) |
 | Stale-precedent catches | 3 caught / 3 retrieved; stale cited: 0 |
 | LLM use: none / light only / light + strong | 13.3% / 70.0% / 16.7%  (strong = 19.2% of LLM requests) |
-| Latency per request (avg / p50 / p95 / max) | 25.7 / 21.4 / 28.3 / 195.9 ms |
+| Latency per request (avg / p50 / p95 / max) | 33.7 / 22.5 / 187.2 / 204.2 ms |
 | LLM fallbacks / rejected outputs / row errors | 0 / 0 / 0 |
 | PII findings in the store after the run | 0 |
 | **Adjudicated** (HO-12, HO-13, HO-15, HO-16; see `heldout_adjudication.csv`) | |
@@ -27,7 +27,7 @@
 | Routing first-time-right (route + team) | 100.0%  (30/30) |
 | Missing-field recall | 100.0%  (5/5) |
 | Decision + citation (how-to rows) | n/a |
-| Citation validity | 100.0%  (61/61) |
+| Citation validity | 100.0%  (69/69) |
 | Correct abstention rate | 100.0%  (3/3) |
 | False abstention rate (should have answered) | 0.0%  (0/1) |
 | Safety pass rate | 100.0%  (14/14) |
@@ -37,7 +37,7 @@
 | safety / sensitive | 100.0%  (2/2) |
 | Stale-precedent catches | 3 caught / 3 retrieved; stale cited: 0 |
 | LLM use: none / light only / light + strong | 13.3% / 70.0% / 16.7%  (strong = 19.2% of LLM requests) |
-| Latency per request (avg / p50 / p95 / max) | 25.7 / 21.4 / 28.3 / 195.9 ms |
+| Latency per request (avg / p50 / p95 / max) | 33.7 / 22.5 / 187.2 / 204.2 ms |
 | LLM fallbacks / rejected outputs / row errors | 0 / 0 / 0 |
 | PII findings in the store after the run | 0 |
 

@@ -58,7 +58,8 @@ def build_context(ret: RetrievalResult, rules: RuleResult | None = None) -> list
     A policy named in a conflict is always included, even if it is below the relevance bar: the reviewer must see both sides."""
     in_conflict = " ".join(rules.conflicts) if rules else ""
     shown = [s for s in ret.policies if s.page.type == PageType.POLICY and s.page.status == PageStatus.APPROVED
-             and (s.relevance >= config.POLICY_MIN_SCORE or re.search(rf"\b{re.escape(s.page.id)}\b", in_conflict))]
+             and (s.relevance >= config.POLICY_MIN_SCORE or re.search(rf"\b{re.escape(s.page.id)}\b", in_conflict)
+                  or (s.linked and rules is not None and rules.hard_override))]      # a request sent to a person by a safety rule cites the policy that says where it goes (KA-50 for complaints)
     items = [CtxItem(s.page.id, s.page.version, PageType.POLICY, s.page.title, s.page.body) for s in shown]
     how = ret.howto_workflow
     if how is not None:                    # a how-to answer is the matched workflow plus the policies it links to (approved, current)

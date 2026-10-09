@@ -29,6 +29,7 @@ TRIGGERS = {
 }
 ALERT_EVENTS = ("alert_sent", "alert_simulated", "alert_failed")
 TIMEOUT_S = 5
+SUPPRESSED = False        # seeding old history must never page anyone
 SYSTEM = User(id="system", name="CareGrid", role="senior_reviewer")           # audit actor label only
 
 
@@ -77,6 +78,8 @@ def already_sent(store, case_id: str, trigger: str) -> bool:
 def notify(case: Case, trigger: str, store) -> str:
     """'sent' | 'simulated' | 'failed' | 'duplicate'. Never raises."""
     try:
+        if SUPPRESSED:
+            return "suppressed"
         if trigger not in TRIGGERS:
             return "failed"
         if already_sent(store, case.id, trigger):

@@ -121,6 +121,27 @@ class SQLiteStore:
         nums = [int(m.group(1)) for (i,) in self._all("SELECT id FROM cases") if (m := _REQ_ID.match(i))]
         return f"REQ-{max(nums, default=0) + 1:04d}"
 
+    def shift_time(self, case_id: str, delta) -> None:
+        """Move a case, its audit events and its communications back in time by `delta` (a timedelta). Used only to age SEEDED cases that
+        were produced by the real pipeline, so queue ageing and timelines look like real history."""
+        case = self.get_case(case_id)
+        if case is None:
+            raise KeyError(case_id)
+        case.created_at -= delta
+        case.state_history = [(st, ts - delta) for st, ts in case.state_history]
+        if case.forwarded_at:
+            case.forwarded_at -= delta
+        self._exec("INSERT OR REPLACE INTO cases (id, created_at, state, data) VALUES (?,?,?,?)",
+                   (case.id, case.created_at.isoformat(), case.state.value, case.model_dump_json()))
+        for seq, data in self._all("SELECT seq, data FROM audit WHERE case_id=?", (case_id,)):
+            ev = AuditEvent.model_validate_json(data)
+            ev = ev.model_copy(update={"ts": ev.ts - delta})
+            self._exec("UPDATE audit SET ts=?, data=? WHERE seq=?", (ev.ts.isoformat(), ev.model_dump_json(), seq))
+        for cid, data in self._all("SELECT id, data FROM comms WHERE case_id=?", (case_id,)):
+            c = Communication.model_validate_json(data)
+            c = c.model_copy(update={"ts": c.ts - delta})
+            self._exec("UPDATE comms SET ts=?, data=? WHERE id=?", (c.ts.isoformat(), c.model_dump_json(), cid))
+
     # -- audit (append-only)
     def append_audit(self, ev: AuditEvent) -> None:
         types: set[str] = set()

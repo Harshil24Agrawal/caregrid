@@ -18,8 +18,9 @@ TYPE_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("prior_auth_status", re.compile(
         r"prior[- ]?auth|pre-?auth|\bPA-\d{4}-\d{5}\b|authori[sz]ation\s+(?:status|number|id|request|decision|update|#)|"
         r"\b(?:status|update|decision|outcome|result)\s+(?:of|on|for)\s+(?:the |an? |my |our |this |that )?authori[sz]ation", re.I)),
-    ("dme_equipment_request", re.compile(r"wheelchair|oxygen|equipment|\bDME\b|\bCPAP\b|\bE\d{4}\b", re.I)),
+    # a complaint about a wheelchair claim is a complaint, not an equipment order
     ("complaint_grievance", re.compile(r"complain|grievance|lawyer|unacceptable", re.I)),
+    ("dme_equipment_request", re.compile(r"wheelchair|oxygen|equipment|\bDME\b|\bCPAP\b|\bE\d{4}\b", re.I)),
     # status intent is required: the bare word "claim(s)" ("claims team", "claims process") is not enough
     ("claim_status_inquiry", re.compile(
         r"\bCLM-\d+|\bclaim\s+(?:number|no\.?|id|#)|"

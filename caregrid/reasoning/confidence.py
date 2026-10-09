@@ -73,7 +73,7 @@ def build_confidence(breakdown: dict[str, int], has_conflicts: bool) -> Confiden
 
 def score(cls: Classification, ret: RetrievalResult, rules: RuleResult, p: Proposal) -> Confidence:
     breakdown = {
-        "policy": policy_component(ret),
+        "policy": policy_component(ret) or (15 if rules.hard_override and any(s.linked and s.page.type == PageType.POLICY for s in ret.policies) else 0),
         "precedent": precedent_component(ret, p),
         "fields": fields_component(rules),
         "clarity": clarity_component(cls),

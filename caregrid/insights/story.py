@@ -122,10 +122,14 @@ def checks(case: Case, brain: Brain, viewer: User) -> list[dict]:
     stale = next((n for n in (rules.notes if rules else []) if " is stale (" in n), None)
     if stale and full:
         rows.append({"status": "warn", "label": "Stale past case", "text": stale.split(" and ")[0].replace(" is stale", " relies on an old policy version") + "; not used"})
-    flags = [t for k, t in (("CLINICAL", "medical question"), ("SENSITIVE", "sensitive"), ("ACCOUNT_SPECIFIC", "about a specific account"),
+    rtype = case.classification.request_type if case.classification else "unknown"
+    who = _team_name(brain, case.assigned_team)
+    flags = [t for k, t in (("CLINICAL", f"medical question: not answered, handled by {who}"),
+                            ("SENSITIVE", f"complaint: handled by {who}" if rtype == "complaint_grievance" else f"sensitive: handled by {who}"),
+                            ("ACCOUNT_SPECIFIC", "about a specific account: identity is verified by a person"),
                             ("ACCESS_DENIED", "asks for data beyond the role")) if k in reasons]
     if flags:
-        rows.append({"status": "bad" if "CLINICAL" in reasons or "ACCESS_DENIED" in reasons else "warn", "label": "Flags", "text": ", ".join(flags)})
+        rows.append({"status": "bad" if "CLINICAL" in reasons or "ACCESS_DENIED" in reasons else "warn", "label": "Flags", "text": "; ".join(flags)})
     elif not blocked:
         rows.append({"status": "ok", "label": "Flags", "text": "no medical, legal or personal-data flags"})
     return rows[:6]
@@ -216,8 +220,14 @@ def next_short(case: Case, viewer: User) -> str:
     return "Approve or reject" if b == "action" else f"Waiting for a {role}"
 
 
+def quote(case: Case) -> str:
+    """What the requester actually wrote (masked, whitespace collapsed, at most 400 characters)."""
+    text = " ".join((case.masked_text or "").split())
+    return text if len(text) <= 400 else text[:399].rstrip() + "…"
+
+
 def story(case: Case, brain: Brain, viewer: User) -> dict:
-    return {"problem": problem(case), "checks": checks(case, brain, viewer), "decision": decision(case, brain),
+    return {"problem": problem(case), "quote": quote(case), "checks": checks(case, brain, viewer), "decision": decision(case, brain),
             "next_steps": next_steps(case, brain, viewer)}
 
 

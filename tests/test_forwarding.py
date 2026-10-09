@@ -115,4 +115,4 @@ def test_state_always_matches_the_rules_in_a_fresh_reset(client):
             assert detail["missing"]["missing"] or detail["missing"]["invalid"], row["id"]
             assert detail["details_form"] is not None or True
         else:
-            assert not (detail["missing"]["missing"] or detail["missing"]["invalid"]) or row["state"] in ("closed", "answered"), row["id"]
+            assert not (detail["missing"]["missing"] or detail["missing"]["invalid"]) or row["state"] in ("closed", "answered") or detail["reason_codes"] and                 set(detail["reason_codes"]) & {"CLINICAL", "ACCOUNT_SPECIFIC", "SENSITIVE", "ACCESS_DENIED"}, row["id"]      # a safety case goes to a person even when incomplete
