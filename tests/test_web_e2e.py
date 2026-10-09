@@ -249,8 +249,9 @@ def test_s7_pr_loop_in_the_browser(web):
     assert "not available for your role" in text(p) and p.query_selector("button[data-act=approve]") is None
     web.as_user("U5")
     p = web.go("/knowledge.html?tab=prs", "button[data-act=approve]")
-    assert "Retire" in text(p) and "KA-32" in text(p) and not p.is_disabled("button[data-act=approve]")
-    p.click("button[data-act=approve]")
+    ka32 = ".att:has(a.mono[href*='KA-32']) button[data-act=approve]"                      # the seeded KA-45 suggestion is open too
+    assert "Retire" in text(p) and "KA-32" in text(p) and not p.is_disabled(ka32)
+    p.click(ka32)
     p.click("#m-ok")
     p.wait_for_selector("text=Decided (1)", timeout=T)
     p.click("#tabs .tab[data-t=lint]")
