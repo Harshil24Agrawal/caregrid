@@ -13,6 +13,8 @@ Request bodies are never logged and the 422 handler does not echo them back.
 from __future__ import annotations
 
 import csv
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -25,7 +27,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -95,6 +97,80 @@ def reset_process_state() -> None:
 
 def get_store() -> SQLiteStore:
     return SQLiteStore()                       # one short-lived connection per operation
+
+
+# ------------------------------------------------------------------ deployment: health, first start, optional access code
+GATE_COOKIE = "cg_gate"
+_gate_attempts: dict[str, list[float]] = {}
+GATE_PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CareGrid - access code</title><link rel="icon" href="data:,"/><style>body{font:16px system-ui,sans-serif;background:#f3f5f8;display:grid;place-items:center;min-height:100vh;margin:0}
+form{background:#fff;padding:28px;border-radius:12px;box-shadow:0 2px 12px #0002;width:min(92vw,340px)}h1{font-size:20px;margin:0 0 6px}p{color:#5a6678;margin:0 0 14px;font-size:14px}
+input{width:100%;box-sizing:border-box;padding:10px;font-size:16px;border:1px solid #c4cdda;border-radius:8px}button{margin-top:12px;width:100%;padding:10px;font-size:16px;background:#1d5fd1;color:#fff;border:0;border-radius:8px;cursor:pointer}
+#m{color:#b42318;font-size:14px;min-height:20px;margin-top:8px}</style></head><body><form id="f"><h1>CareGrid</h1><p>Enter the access code to continue.</p>
+<label for="c" style="position:absolute;left:-9999px">Access code</label><input id="c" type="password" autocomplete="current-password" autofocus/><button type="submit">Continue</button><div id="m" role="status"></div></form>
+<script>document.getElementById('f').onsubmit=async function(e){e.preventDefault();var r=await fetch('/api/gate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('c').value})});
+if(r.ok){location.reload();}else{document.getElementById('m').textContent=r.status===429?'Too many tries. Wait a minute.':'That code is not right.';}};</script></body></html>"""
+
+
+def access_code() -> str:
+    return os.environ.get("APP_ACCESS_CODE", "")
+
+
+def _gate_token(code: str) -> str:
+    return hmac.new(code.encode(), b"caregrid-gate-v1", hashlib.sha256).hexdigest()
+
+
+def gate_ok(request: Request) -> bool:
+    code = access_code()
+    return not code or hmac.compare_digest(request.cookies.get(GATE_COOKIE, ""), _gate_token(code))
+
+
+@app.middleware("http")
+async def _gate(request: Request, call_next):
+    """When APP_ACCESS_CODE is set the whole UI and API need the passcode cookie. /api/health and the passcode endpoint stay open."""
+    if gate_ok(request) or request.url.path in ("/api/health", "/api/gate"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=401, content={"detail": "Access code required."})
+    return HTMLResponse(GATE_PAGE, status_code=401)
+
+
+class GateIn(BaseModel):
+    code: str = Field(max_length=200)
+
+
+@app.post("/api/gate")
+def api_gate(body: GateIn, request: Request):
+    """Check the passcode (constant-time compare), at most 5 tries a minute per client. The code is never logged or echoed."""
+    code = access_code()
+    if not code:
+        return {"ok": True}
+    now = time.monotonic()
+    who = request.client.host if request.client else "?"
+    tries = [t for t in _gate_attempts.get(who, []) if now - t < 60]
+    if len(tries) >= 5:
+        raise HTTPException(status_code=429, detail="Too many tries.")
+    _gate_attempts[who] = [*tries, now]
+    if not hmac.compare_digest(body.code.encode(), code.encode()):
+        raise HTTPException(status_code=401, detail="Wrong code.")
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(GATE_COOKIE, _gate_token(code), httponly=True, samesite="lax", secure=request.url.scheme == "https", max_age=12 * 3600)
+    return resp
+
+
+@app.get("/api/health")
+def api_health():
+    """Liveness for the host's health check: no data, no auth."""
+    return {"status": "ok", "demo_mode": demo_mode()}
+
+
+@app.on_event("startup")
+def _first_start() -> None:
+    """A fresh deployment (no database yet) seeds the demo state by itself."""
+    if not Path(config.DB_PATH).exists() or not (Path(config.BRAIN_DIR) / "index.md").exists():
+        from caregrid.admin import reset_demo
+
+        reset_demo(brain=get_brain())
 
 
 # ------------------------------------------------------------------ auth, errors
