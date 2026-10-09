@@ -58,7 +58,7 @@ Render (and any host) reads exactly these names from the environment; set the fi
 - **Startup log** (one line, never a secret): `alerts: SNS enabled (topic caregrid-critical-alerts, region us-east-1)` or `alerts: simulated (missing <names>)`.
 - **Test it**: `python -m caregrid.cli alerts test` (Render shell or locally) prints exactly one line: `sent (MessageId ...)`, `simulated (missing ...)` or `failed (<error type>, AWS error code <code>)`. In the UI: Audit page -> "Send test alert" (demo mode, ops manager or senior reviewer).
 - **Reset and seeding never alert**, and leave no alert dedup entries. CASE-1024 is seeded already forwarded; to see a fresh approval alert, submit a new high-cost equipment request (for example the CASE-1024 text from the Demo guide) and forward it as Asha. One alert is sent per case per trigger.
-- SLA alerts are checked when the dashboard loads (at most once a minute) and by `python -m caregrid.cli alerts`; the seeded cases that have been in review over `ALERT_SLA_HOURS` will alert once on the first dashboard load of a fresh deployment.
+- SLA alerts are checked when the dashboard loads (at most once a minute) and by `python -m caregrid.cli alerts`. Seeded demo cases (flagged `seeded` by reset) are skipped, so a deploy, reset or dashboard load never emails about seed data; live cases keep the SLA alert.
 - The test suite, `cli demo`, `cli eval` and `cli check` never publish.
 
 ## Alert e-mail format

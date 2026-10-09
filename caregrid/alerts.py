@@ -290,7 +290,7 @@ def sweep(store, now: datetime | None = None) -> list[str]:
     limit = timedelta(hours=sla_hours())
     done = []
     for c in store.list_cases():
-        if c.state not in (State.IN_REVIEW, State.ESCALATED) or not c.state_history:
+        if c.seeded or c.state not in (State.IN_REVIEW, State.ESCALATED) or not c.state_history:
             continue
         entered = next((ts for st, ts in reversed(c.state_history) if st == c.state), c.created_at)
         if now - entered > limit and notify(c, "sla", store) in ("sent", "simulated", "failed"):

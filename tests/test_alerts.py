@@ -74,17 +74,30 @@ def test_high_risk_forwarded_to_senior_ops_sends_an_approval_alert_once(client, 
     assert len(fake.sent) == 1 and len(events(case["id"])) == 1
 
 
-def test_sla_sweep_alerts_cases_waiting_too_long_once(client, monkeypatch):
+def test_sla_sweep_alerts_live_cases_once_and_never_seeded_ones(client, monkeypatch):
     fake = FakeSNS()
     stub(monkeypatch, fake)
     monkeypatch.setenv("ALERT_SLA_HOURS", "24")
     store = api.get_store()
-    old = [c.id for c in store.list_cases() if c.state.value in ("in_review", "escalated") and (datetime.now() - c.state_history[-1][1]) > timedelta(hours=24)]
-    assert old
-    done = alerts.sweep(store)
-    assert set(done) == set(old) and len(fake.sent) == len(old)
-    assert all(m["Subject"].startswith("[CareGrid] OVERDUE | ") and " h for review" in m["Subject"] for m in fake.sent)
-    assert alerts.sweep(store) == [] and len(fake.sent) == len(old)             # deduplicated
+    seeded = [c for c in store.list_cases() if c.state.value in ("in_review", "escalated") and (datetime.now() - c.state_history[-1][1]) > timedelta(hours=24)]
+    assert seeded and all(c.seeded for c in store.list_cases() if c.id.startswith("REQ-00") and int(c.id[4:]) <= 22) and store.get_case("CASE-1024").seeded
+    assert alerts.sweep(store) == [] and fake.sent == []                         # seed data never emails, however old
+    live = post_request(client, "asha", "Provider NPI 1234567890 legally changed name from Priya Nair to Priya Menon, W-9 attached.")["id"]
+    case = store.get_case(live)
+    assert not case.seeded and case.state.value == "in_review"
+    case.state_history = [(st, ts - timedelta(hours=30)) for st, ts in case.state_history]          # the live case has now waited 30 h
+    store.save_case(case)
+    assert alerts.sweep(store) == [live] and len(fake.sent) == 1
+    assert fake.sent[0]["Subject"].startswith(f"[CareGrid] OVERDUE | {live} | Waiting 30 h")
+    assert alerts.sweep(store) == [] and len(fake.sent) == 1                      # once per case
+
+
+def test_a_dashboard_load_and_a_reset_never_email_about_seed_data(client, monkeypatch):
+    fake = FakeSNS()
+    stub(monkeypatch, fake)
+    api._sweep["at"] = 0.0
+    assert client.get("/api/dashboard", headers=H["rahul"]).status_code == 200 and client.get("/api/metrics", headers=H["rahul"]).status_code == 200
+    assert fake.sent == []
 
 
 def test_without_a_topic_the_alert_is_simulated_and_the_case_is_unaffected(client, monkeypatch):

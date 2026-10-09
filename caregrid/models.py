@@ -200,6 +200,7 @@ class Case(BaseModel):
     reason_codes: list[ReasonCode] = []
     related: dict[str, list[str]] = {}       # {"profile": [...], "invoice": [...], "logs": [...], "jira": [...], "runbook": [...]}
     llm_tiers_used: list[str] = []           # ["light"] or ["light","strong"] — cost story
+    seeded: bool = False                     # made by reset to give the demo history; never alerted on (SLA sweep skips it)
     forwarded_by: str | None = None          # the requester who confirmed the handoff to the team (name); None until then
     forwarded_at: datetime | None = None
     forward_note: str = ""                    # the requester's optional note, MASKED

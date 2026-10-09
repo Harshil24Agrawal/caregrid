@@ -137,9 +137,17 @@ def seed_historical_cases(store: Store, brain: Brain, llm: LLM, data_dir: Path) 
                                                           ("Add: claim status requests are acknowledged within one business day." if proposal_pr else "")),
                                            store, brain, llm)
             store.shift_time(cid, timedelta(hours=hours))
+            _mark_seeded(store, cid)
     finally:
         alerts.SUPPRESSED, config.REQUIRE_CONFIRMATION = was_suppressed, mode
     return len(HISTORY)
+
+
+def _mark_seeded(store: Store, case_id: str) -> None:
+    """Seeded history is flagged so the SLA sweep never emails about it."""
+    case = store.get_case(case_id)
+    case.seeded = True
+    store.save_case(case)
 
 
 def _steps(plan: tuple) -> list[tuple]:
@@ -179,6 +187,7 @@ def seed_demo_case(store: Store, brain: Brain, llm: LLM, data_dir: Path) -> Case
         finally:
             alerts.SUPPRESSED = was
     store.shift_time(case.id, timedelta(hours=seed["hours_ago"]))
+    _mark_seeded(store, case.id)
     return store.get_case(case.id)
 
 
