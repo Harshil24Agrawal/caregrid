@@ -17,6 +17,7 @@ import json
 import os
 import re
 import threading
+import time
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -28,10 +29,11 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
+from caregrid import alerts as alerts_mod
 from caregrid import config
 from caregrid.insights import metrics
 from caregrid.insights.explain import case_summary, one_liner, workflow_guidance
-from caregrid.insights.story import bucket, next_short, problem_line, story
+from caregrid.insights.story import bucket, next_short, problem_line, story, timeline
 from caregrid.insights.provenance import format_source, page_sections, provenance, source_for_citation
 from caregrid.insights.graph import case_graph
 from caregrid.knowledge.brain import Brain
@@ -288,6 +290,7 @@ def case_detail(case: Case, user: User, store: SQLiteStore, brain: Brain) -> dic
         "guidance": workflow_guidance(case, brain, store.list_audit(case.id)),
         "patient": patients_mod.case_patient(case, user, store, config.DATA_DIR),
         "story": story(case, brain, user),
+        "timeline": timeline(case, store.list_audit(case.id), {u.id: u.name for u in load_users(config.DATA_DIR).values()}, brain),
         "forwarded": ({"by": case.forwarded_by, "at": case.forwarded_at.isoformat() if case.forwarded_at else None, "note": case.forward_note}
                       if case.forwarded_by else None),
         "details_form": details_mod.form_for(case) if case.state == State.NEEDS_INFO and details_mod.can_add(user, case) else None,
@@ -538,9 +541,15 @@ def scoped_store(user: User, store: SQLiteStore) -> SQLiteStore:
     return scoped
 
 
+_sweep = {"at": 0.0}
+
+
 @app.get("/api/metrics")
 def api_metrics(user: User = Depends(actor)):
     store, brain = get_store(), get_brain()
+    if time.monotonic() - _sweep["at"] > 60:                  # SLA breaches are alerted when the dashboard loads (at most once a minute)
+        _sweep["at"] = time.monotonic()
+        alerts_mod.sweep(store)
     sc = scoped_store(user, store)
     waiting = [c for c in visible_cases(user, store) if c.state in (State.IN_REVIEW, State.ESCALATED, State.NEEDS_INFO)]
     trust = [t.model_dump(mode="json") for t in metrics.trust_overview(store)]

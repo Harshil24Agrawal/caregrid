@@ -138,3 +138,5 @@ table.compact td.ellip { min-width: 120px; }
 .pill-conf { display: inline-block; margin-left: 6px; padding: 1px 10px; border-radius: 999px; background: var(--green-bg); color: var(--green); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .card.flat { box-shadow: none; border: 0; padding: 0; margin-bottom: 12px; } td.strong { font-weight: 700; color: var(--blue-d); }
 .demo-card { display: grid; gap: 6px; } .demo-card .talk { color: var(--muted); font-size: 14px; }
+
+.tl { list-style: none; margin: 0 0 6px; padding: 0; font-size: 14px; } .tl li { padding: 2px 0; } #forward-note { flex-basis: 100%; }

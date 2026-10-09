@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from caregrid import alerts
 from caregrid.knowledge.brain import Brain
 from caregrid.knowledge.retrieve import attach_howto, find_howto_workflow, retrieve
 from caregrid.llm import LLM
@@ -90,6 +91,7 @@ def _route_and_save(case: Case, store: Store, llm: LLM, calls_before: tuple[int,
     calls = _answered(llm)[calls_before[0]:]
     case.llm_tiers_used = list(dict.fromkeys(calls))
     store.save_case(case)
+    alerts.after_routing(case, store)                            # critical risk / a blocked attempt: tell the on-call person (never blocks the case)
     return case
 
 

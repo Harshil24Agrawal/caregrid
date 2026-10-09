@@ -219,3 +219,61 @@ def next_short(case: Case, viewer: User) -> str:
 def story(case: Case, brain: Brain, viewer: User) -> dict:
     return {"problem": problem(case), "checks": checks(case, brain, viewer), "decision": decision(case, brain),
             "next_steps": next_steps(case, brain, viewer)}
+
+
+# ------------------------------------------------------------------ the timeline: the story of the case, from the audit log, newest last
+CHANNEL = {"email": "Email", "whatsapp": "WhatsApp", "sms": "SMS", "portal": "Portal message"}
+ACTION_PHRASE = {"approve": "approved it", "edit_approve": "edited and approved it", "reject": "rejected it", "escalate": "escalated it",
+                 "ask_requester": "asked the requester for more information"}
+
+
+def timeline(case: Case, events: list, names: dict[str, str], brain: Brain) -> list[dict]:
+    """[{ts, text}] human-readable, oldest first. Names come from the user list; the ids and amounts never appear."""
+    from datetime import datetime
+
+    who = lambda e: names.get(e.actor_id, "CareGrid")                                        # noqa: E731
+    out: list[dict] = []
+    for e in sorted(events, key=lambda e: e.ts):
+        d, text = e.details, None
+        if e.event == "request_received":
+            text = f"{who(e)} submitted the request"
+        elif e.event == "citations_verified":
+            kept = d.get("kept", [])
+            pol = [k.replace("@v", " v") for k in kept if k[:3] in ("KA-", "REG")]
+            prec = [k for k in kept if k.startswith("P-")]
+            text = "CareGrid checked it (" + ", ".join(x for x in (("policy " + ", ".join(pol)) if pol else "", (f"{len(prec)} past case{'s' if len(prec) != 1 else ''}") if prec else "") if x) + ")" \
+                if pol or prec else "CareGrid checked it (no approved policy found)"
+        elif e.event == "details_added":
+            text = f"{who(e)} added the missing details ({', '.join(label(f) for f in d.get('fields', []))})"
+        elif e.event == "forwarded":
+            text = f"{who(e)} sent it to {_team_name(brain, d.get('team'))}" + (" with a note" if d.get("note") else "")
+        elif e.event == "withdrawn":
+            text = f"{who(e)} withdrew the request"
+        elif e.event == "guard_blocked":
+            text = "The safety check stopped the request"
+        elif e.event == "routed":
+            st, team = d.get("state"), _team_name(brain, d.get("team"))
+            if d.get("routing") == "auto":
+                text = None
+            elif st == "needs_info":
+                text = "CareGrid needs more details from the requester"
+            elif st == "proposed":
+                text = f"CareGrid suggests sending it to {team}"
+            elif st == "in_review":
+                text = f"Sent automatically for safety to {team}"
+        elif e.event == "auto_with_audit":
+            text = "Answered automatically"
+        elif e.event == "review_submitted":
+            text = f"{who(e)} {ACTION_PHRASE.get(d.get('action'), 'decided')}"
+        elif e.event == "communication_sent":
+            text = f"{CHANNEL.get(d.get('channel'), 'Message')} sent" + (" (simulated)" if d.get("status") == "simulated" else "")
+        elif e.event == "precedent_saved":
+            text = f"Saved as precedent {d.get('precedent')}"
+        elif e.event in ("alert_sent", "alert_simulated", "alert_failed"):
+            where = d.get("target", "the on-call team")
+            text = {"alert_sent": f"Alert emailed to {where}", "alert_simulated": f"Alert to {where} simulated (no topic configured)",
+                    "alert_failed": f"Alert to {where} could not be sent"}[e.event]
+        if text:
+            day = "" if e.ts.date() == datetime.now().date() else e.ts.strftime("%d %b ")
+            out.append({"ts": e.ts.isoformat(), "time": day + e.ts.strftime("%H:%M"), "text": text})
+    return out

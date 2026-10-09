@@ -134,6 +134,62 @@
       '<div class="card story" id="decision"><h2>Decision</h2><p>' + CG.esc(d.text) + ' ' + conf + '</p></div>' +
       '<div class="card story" id="next"><h2>Next steps</h2><ol>' + st.next_steps.map(function (x) { return '<li>' + CG.esc(x) + '</li>'; }).join('') + '</ol></div>';
   }
+  // THE REQUESTER'S STEPS: confirm the handoff, add the missing details
+  function confirmHtml() {
+    var cf = c.confirm;
+    if (!cf || !cf.can_forward) return '';
+    return '<div class="card story" id="confirm"><h2>Your step</h2><p>' + CG.esc(c.story.decision.text) + '</p>' +
+      '<label class="field" style="margin-top:8px">Note for ' + CG.esc(CG.team(cf.team)) + ' (optional)<textarea id="fwd-note" rows="2" maxlength="500" placeholder="Anything the reviewer should know (masked before it is stored)"></textarea></label>' +
+      '<div class="flex" style="margin-top:8px"><button class="btn primary" id="fwd-go" type="button">Send to ' + CG.esc(CG.team(cf.team)) + '</button><button class="btn" id="fwd-withdraw" type="button">Withdraw</button></div></div>';
+  }
+  function detailsFormHtml() {
+    var f = c.details_form;
+    if (!f || !f.length) return '';
+    return '<div class="card story" id="add-details"><h2>Add missing details</h2><form id="details-form" class="stack">' + f.map(function (x) {
+      var input = x.kind === 'select' ? '<select name="' + CG.esc(x.field) + '"><option value="">Choose…</option>' + x.options.map(function (o) { return '<option>' + CG.esc(o) + '</option>'; }).join('') + '</select>' :
+        '<input type="text" name="' + CG.esc(x.field) + '" autocomplete="off" maxlength="200" placeholder="' + CG.esc(x.hint) + '">';
+      return '<label class="field">' + CG.esc(CG.human(x.label)) + (x.invalid ? ' <span class="small" style="color:var(--red)">(' + CG.esc(x.problem || 'not valid') + ')</span>' : '') + input + '<span class="small muted">' + CG.esc(x.hint) + '</span></label>';
+    }).join('') + '<div class="flex"><button class="btn primary" type="submit">Send details</button><span id="details-msg" class="small" role="status"></span></div></form></div>';
+  }
+  function forwardedHtml() {
+    var f = c.forwarded;
+    if (!f) return '';
+    return ' <span class="chip blue" id="forwarded-by" title="' + CG.esc(f.note || '') + '">Forwarded by ' + CG.esc(f.by) + ' · ' + CG.esc(CG.time(f.at)) + '</span>' + (f.note ? '<div class="small muted" id="forward-note">\u201c' + CG.esc(f.note) + '\u201d</div>' : '');
+  }
+  var timelineOpen = false;
+  function timelineHtml() {
+    var t = c.timeline || [];
+    if (!t.length) return '';
+    var shown = timelineOpen ? t : t.slice(-3);
+    return '<div class="card story" id="timeline"><h2>Timeline</h2><ol class="tl">' + shown.map(function (e) { return '<li><span class="mono small muted">' + CG.esc(e.time) + '</span> ' + CG.esc(e.text) + '</li>'; }).join('') + '</ol>' +
+      (t.length > 3 ? '<button class="btn sm" id="tl-toggle" type="button">' + (timelineOpen ? 'Show less' : 'Show all ' + t.length) + '</button>' : '') + '</div>';
+  }
+  function wireSteps() {
+    var go = document.getElementById('fwd-go');
+    if (go) {
+      go.onclick = async function () {
+        go.disabled = true;
+        try { var r = await CG_API.post('/api/cases/' + encodeURIComponent(c.id) + '/forward', { note: document.getElementById('fwd-note').value }); c = r.case; events = await CG_API.get('/api/cases/' + encodeURIComponent(c.id) + '/audit'); CG.toast('Sent to ' + CG.team(c.assigned_team) + '.', 'ok'); draw(); } catch (e) { CG.fail(e); go.disabled = false; }
+      };
+      document.getElementById('fwd-withdraw').onclick = async function () {
+        var ok = await CG.confirm('Withdraw this request?', 'The case is closed and nobody will review it.', 'Withdraw');
+        if (!ok) return;
+        try { var r = await CG_API.post('/api/cases/' + encodeURIComponent(c.id) + '/withdraw', {}); c = r.case; events = await CG_API.get('/api/cases/' + encodeURIComponent(c.id) + '/audit'); draw(); } catch (e) { CG.fail(e); }
+      };
+    }
+    var form = document.getElementById('details-form');
+    if (form) form.onsubmit = async function (ev) {
+      ev.preventDefault();
+      var values = {};
+      CG.$$('#details-form [name]').forEach(function (i) { if (i.value.trim()) values[i.name] = i.value.trim(); });
+      var msg = document.getElementById('details-msg');
+      if (!Object.keys(values).length) { msg.textContent = 'Fill in at least one detail.'; return; }
+      try { var r = await CG_API.post('/api/cases/' + encodeURIComponent(c.id) + '/details', { values: values }); c = r.case; events = await CG_API.get('/api/cases/' + encodeURIComponent(c.id) + '/audit'); CG.toast(c.state === 'needs_info' ? 'Thanks. Some details are still missing.' : 'Details added.', 'ok'); draw(); } catch (e) { msg.textContent = e.message; }
+    };
+    var tl = document.getElementById('tl-toggle');
+    if (tl) tl.onclick = function () { timelineOpen = !timelineOpen; draw(); };
+  }
+
   function detailsHtml() {
     var lit = events.map(function (e) { return e.event; });
     var tiers = c.reviewer && !CG.isRestricted(c.reviewer) ? c.reviewer.llm_tiers_used : null;
@@ -308,8 +364,8 @@
 
   function draw() {
     el.innerHTML = '<div class="page-head"><a class="small" href="case.html">\u2190 All cases</a><div class="flex" style="margin-top:6px"><h1 class="mono">' + CG.esc(c.id) + '</h1><span style="font-size:18px;font-weight:600">' + CG.esc(CG.what(c.request_type)) + '</span>' +
-      CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old \u00b7 requested by ' + CG.esc(c.requester.name) + '</span></div></div>' +
-      '<div class="grid g-case"><div class="stack">' + storyHtml() + '</div><div class="stack">' + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
+      CG.stateTag(c.state) + CG.riskTag(c.risk) + '<span class="small muted">' + CG.esc(CG.age(c.age_hours)) + ' old \u00b7 requested by ' + CG.esc(c.requester.name) + '</span>' + forwardedHtml() + '</div></div>' +
+      '<div class="grid g-case"><div class="stack">' + storyHtml() + timelineHtml() + '</div><div class="stack">' + confirmHtml() + detailsFormHtml() + decidePanel() + '<div id="assistant">' + assistantHtml() + '</div></div></div>' +
       provenanceHtml() + detailsHtml();
     var wb = document.getElementById('why-box'), db = document.getElementById('details');
     wb.addEventListener('toggle', function () { whyOpen = wb.open; });
@@ -319,5 +375,6 @@
     if (tab === 'handled') box.innerHTML = '<div class="card flat">' + rowsHtml() + '</div>' + guidanceHtml(); else if (tab === 'evidence') box.innerHTML = evidenceTab(); else if (tab === 'graph') graphTab(box); else if (tab === 'audit') box.innerHTML = auditTab(); else messagesTab(box);
     wireDecide();
     wireAssistant();
+    wireSteps();
   }
 })();

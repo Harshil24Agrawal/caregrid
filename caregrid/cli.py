@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(prog="python -m caregrid.cli", description="CareGrid command line")
-    parser.add_argument("command", choices=[*_COMMANDS, "llmcheck"])
+    parser.add_argument("command", choices=[*_COMMANDS, "llmcheck", "alerts"])
     parser.add_argument("--limit", type=int, default=None, help="eval only: run just the first N rows (writes a *.partial.* scorecard)")
     parser.add_argument("--port", type=int, default=8000, help="serve only: port (default 8000)")
     parser.add_argument("--skip-pytest", action="store_true", help="check only: skip the (slow) pytest item")
@@ -215,6 +215,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "llmcheck":
         return llmcheck()
+    if args.command == "alerts":                               # `alerts` = the SLA sweep: one alert per case waiting too long in review
+        from caregrid import alerts
+        from caregrid.store import SQLiteStore
+
+        done = alerts.sweep(SQLiteStore())
+        print(f"SLA sweep: {len(done)} case(s) alerted" + (": " + ", ".join(done) if done else ""))
+        return 0
     if args.command == "data":
         return cmd_data()
     if args.command == "brain":

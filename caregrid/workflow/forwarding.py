@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from caregrid import alerts
 from caregrid.ingest.anonymize import anonymize
 from caregrid.models import Case, Role, State, User
 from caregrid.store import Store
@@ -46,6 +47,7 @@ def forward_case(case_id: str, user: User, note: str, store: Store) -> Case:
     store.save_case(case)
     log(store, "forwarded", user, case.id, team=case.assigned_team, note=bool(masked_note), on_behalf=user.id != case.requester.id)
     log(store, "state_changed", user, case.id, **{"from": before.value, "to": case.state.value, "by": "requester"})
+    alerts.after_forward(case, store)                            # a HIGH-risk case forwarded to Senior Ops: approval needed
     return case
 
 

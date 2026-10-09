@@ -22,7 +22,7 @@
     precedent_saved: 'Saved as precedent', trust_updated: 'Trust ladder updated', communication_sent: 'Message sent', comms_note: 'Message note', pr_requested: 'Change proposed',
     pr_opened: 'Change request opened', pr_decided: 'Change request decided', pr_denied: 'Change request refused', pr_skipped: 'No change request needed',
     pr_rejected_request: 'Change request not accepted', llm_failure: 'Model unavailable', output_checked: 'Output cleaned', requester_asked: 'Asked the requester',
-    pii_remasked: 'Personal data re-masked', patient_linked: 'Linked to a patient', record_viewed: 'Patient record viewed', record_revealed: 'Personal details revealed'
+    pii_remasked: 'Personal data re-masked', alert_sent: 'Alert emailed to on-call', alert_simulated: 'Alert simulated', alert_failed: 'Alert could not be sent', forwarded: 'Sent to the team by the requester', details_added: 'Missing details added', withdrawn: 'Withdrawn by the requester', patient_linked: 'Linked to a patient', record_viewed: 'Patient record viewed', record_revealed: 'Personal details revealed'
   };
   var STEPS = [['Guard', 'request_received'], ['Classify', 'classified'], ['Gather sources', 'context_assembled'], ['Check rules', 'rules_applied'], ['Draft', 'proposal_generated'],
     ['Verify sources', 'citations_verified'], ['Score', 'confidence_scored'], ['Route', 'routed']];
