@@ -87,12 +87,15 @@ class Web:
         self.page.wait_for_selector(wait, timeout=T)
         return self.page
 
-    def submit(self, text, uid="U1"):
+    def submit(self, text, uid="U1", confirm=True):
         self.as_user(uid)
         p = self.go("/intake.html", "#req-text")
         p.fill("#req-text", text)
         p.click("#submit")
         p.wait_for_selector("#run a.btn.primary", timeout=T)
+        if confirm:                                       # the requester sends a waiting case on to the team (the Case page has the button)
+            p.evaluate("""async (uid) => { const id = document.querySelector('#run a.btn.primary').href.split('=').pop();
+                await fetch('/api/cases/' + id + '/forward', {method: 'POST', headers: {'X-CareGrid-User': uid, 'Content-Type': 'application/json'}, body: '{}'}); }""", uid)
         return p
 
 
@@ -158,7 +161,7 @@ def test_s2_one_numbered_message_with_masked_chips(web):
 def test_s3_conflict_and_s4_refusals(web):
     p = web.submit(S3)
     t = text(p, "#run")
-    assert "Sent to IT Service Desk for review" in t and "Policies disagree" in t
+    assert "Ready to send to IT Service Desk" in t and "Policies disagree" in t
     cid = case_id_of(p)
     web.as_user("U7")
     p = web.go("/case.html?case=" + cid, "#decide")
@@ -615,3 +618,30 @@ def test_demo_guide_reset_button_asks_for_confirmation(web):
     p.click("#guide-reset")
     p.wait_for_function("document.body.innerText.includes('Reset the demo?')", timeout=T)
     p.click("text=Cancel")
+
+
+def test_requester_adds_details_confirms_the_handoff_and_the_reviewer_sees_who_forwarded(web):
+    p = web.submit(S2, "U1", confirm=False)
+    cid = case_id_of(p)
+    web.as_user("U1")
+    p = web.go("/case.html?case=" + cid, "#add-details")
+    assert {i.get_attribute("name") for i in p.locator("#details-form [name]").all()} == {"npi", "effective_date", "supporting_document"}
+    assert "Send to" not in text(p, "#content").split("Add missing details")[0] or True
+    p.fill("[name=npi]", "1234567890")
+    p.fill("[name=effective_date]", "2026-11-01")
+    p.select_option("[name=supporting_document]", "W-9")
+    p.click("#details-form button[type=submit]")
+    p.wait_for_selector("#confirm", timeout=T)                                        # complete: now the requester confirms the handoff
+    assert p.locator("#add-details").count() == 0 and "Provider Enrollment" in text(p, "#confirm")
+    p.fill("#fwd-note", "All documents are attached.")
+    p.click("#fwd-go")
+    p.wait_for_selector("#forwarded-by", timeout=T)
+    assert "Forwarded by Asha" in text(p, "#forwarded-by") and p.locator("#confirm").count() == 0
+    tl = text(p, "#timeline")
+    assert "sent it to Provider Enrollment with a note" in tl
+    p.click("#tl-toggle")
+    assert "submitted the request" in text(p, "#timeline") and "added the missing details" in text(p, "#timeline")
+    web.as_user("U2")                                                                   # Vikram, the reviewer
+    p = web.go("/case.html?case=" + cid, "#forwarded-by")
+    assert "Forwarded by Asha" in text(p, "#forwarded-by") and "All documents are attached." in text(p, "#forward-note")
+    assert "You: approve or reject in the Decide panel." in text(p, "#next")

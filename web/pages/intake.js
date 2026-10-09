@@ -42,6 +42,7 @@
       var hard = ['CLINICAL', 'ACCESS_DENIED', 'SENSITIVE', 'ACCOUNT_SPECIFIC'].filter(function (x) { return c.reason_codes.indexOf(x) >= 0; })[0] || c.reason_codes[0];
       return ['red', 'Refused: ' + (hard ? CG.reasonLabel(hard).toLowerCase() : 'not answerable') + ' → ' + team];
     }
+    if (c.state === 'proposed') return ['blue', 'Ready to send to ' + team + ': you confirm'];
     return ['blue', 'Sent to ' + team + ' for review'];
   }
 
